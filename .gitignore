@@ -158,7 +158,7 @@ visualizations/
 *.html
 *.png
 *.svg
-*.pdf
+# *.pdf
 
 
 # ================================
