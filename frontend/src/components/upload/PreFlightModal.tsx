@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react';
-import { Upload } from 'lucide-react';
+import { Upload, Zap } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -38,6 +38,34 @@ export function PreFlightModal({ open, onClose }: PreFlightModalProps) {
         },
       }
     );
+  };
+
+  const handleLoadSampleData = async () => {
+    try {
+      // Fetch the mock data from public folder
+      const response = await fetch('/mock_chat_history.jsonl');
+      const text = await response.text();
+
+      // Convert to File object
+      const blob = new Blob([text], { type: 'application/x-jsonlines' });
+      const mockFile = new File([blob], 'mock_chat_history.jsonl', {
+        type: 'application/x-jsonlines',
+      });
+
+      // Upload the mock file
+      uploadMutation.mutate(
+        { file: mockFile, framework: 'autogen' },
+        {
+          onSuccess: (data) => {
+            setGraphId(data.graph_id);
+            setTotalSteps(data.total_steps);
+            onClose();
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Failed to load sample data:', error);
+    }
   };
 
   return (
@@ -91,6 +119,27 @@ export function PreFlightModal({ open, onClose }: PreFlightModalProps) {
                 Process & Launch
               </>
             )}
+          </Button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Or
+              </span>
+            </div>
+          </div>
+
+          <Button
+            onClick={handleLoadSampleData}
+            disabled={uploadMutation.isPending}
+            variant="outline"
+            className="w-full"
+          >
+            <Zap className="mr-2 h-4 w-4" />
+            Load Sample Data (34 messages)
           </Button>
 
           {uploadMutation.isError && (

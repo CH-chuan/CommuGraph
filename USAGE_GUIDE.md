@@ -100,6 +100,8 @@ CommuGraph is a **full-stack web application** for analyzing multi-agent convers
 
 The **PreFlight Modal** appears automatically on first load.
 
+**Option A: Upload Your Own File**
+
 1. **Select a Log File**:
    - Click "Browse Files" or drag-and-drop
    - Supported formats: `.json`, `.jsonl`
@@ -110,7 +112,7 @@ The **PreFlight Modal** appears automatically on first load.
    - (Currently only AutoGen is supported)
 
 3. **Process & Launch**:
-   - Click the blue "Process & Launch Dashboard" button
+   - Click the blue "Process & Launch" button
    - Backend will:
      - Parse the log file
      - Extract messages and agents
@@ -118,7 +120,15 @@ The **PreFlight Modal** appears automatically on first load.
      - Assign a unique `graph_id`
    - **Processing Time**: 1-3 seconds for typical logs (<100 messages)
 
-4. **Success Indicators**:
+**Option B: Load Sample Data (Quick Test)**
+
+1. **Click "Load Sample Data (34 messages)"** button
+   - Automatically loads a pre-built multi-agent scenario
+   - Scenario: Software development team implementing notification system
+   - Features: 9 agents, 34 messages, 3-hour conversation
+   - Perfect for testing and demo purposes
+
+2. **Success Indicators**:
    - Modal closes automatically
    - Main dashboard appears
    - Graph renders in center panel
@@ -972,6 +982,32 @@ npm install
 ---
 
 ## Sample Data
+
+### Built-in Mock Data (Recommended for Testing)
+
+**File**: `frontend/public/mock_chat_history.jsonl`
+
+A comprehensive 34-message multi-agent conversation demonstrating a realistic software development scenario.
+
+**Quick Access**: Click "Load Sample Data (34 messages)" button in the PreFlight modal.
+
+**Scenario Details**:
+- **Agents**: ProductManager, TechLead, BackendDev, FrontendDev, DatabaseAdmin, Designer, QAEngineer, SecurityEngineer, DevOps
+- **Duration**: 3 hours (09:00 - 11:50)
+- **Task**: Implementing a real-time notification system
+- **Features Demonstrated**:
+  - Task delegation patterns
+  - Multi-agent collaboration
+  - Testing and iteration loops
+  - Security review workflow
+  - Deployment process
+
+**Graph Characteristics**:
+- 9 nodes (agents)
+- Hub-and-spoke patterns (Manager → Team)
+- Peer-to-peer collaboration
+- Feedback loops (QA → Dev → QA)
+- Temporal evolution as agents join
 
 ### AutoGen Sample Log Format
 
