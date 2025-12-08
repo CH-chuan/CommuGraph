@@ -1,0 +1,179 @@
+# ================================
+#  Python General
+# ================================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Byte-compiled / optimized / DLL files
+*.pyd
+*.pyo
+*.pdb
+
+
+# ================================
+#  Environment & Dependency Tools
+# ================================
+# Virtual environments
+venv/
+.env/
+.venv/
+env/
+ENV/
+
+# Poetry / Hatch / PDM
+.poetry/
+.pdm-*
+.hatch/
+
+# Pip cache
+pip-wheel-metadata/
+pip-wheel-cache/
+wheels/
+
+# Conda
+conda-meta/
+*.conda
+*.lock
+
+
+# ================================
+#  Project-Specific: Streamlit App
+# ================================
+.streamlit/
+**/.streamlit/
+
+# Streamlit cached data and temp files
+.streamlit-cache/
+streamlit_cache/
+streamlit_logs/
+**/streamlit_cache/
+**/.streamlit_cache/
+
+
+# ================================
+#  Logs, Temp, Debug Files
+# ================================
+*.log
+*.tmp
+*.out
+*.err
+*.pid
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Temporary analysis output
+*.csv.tmp
+*.jsonl.tmp
+temp/
+tmp/
+
+
+# ================================
+#  Build, Distribution, Packaging
+# ================================
+# Build artifacts
+/build/
+/dist/
+/sdist/
+/develop-eggs/
+/.eggs/
+*.egg
+*.egg-info/
+*.egg-info
+
+# PyInstaller
+*.spec
+
+# Installer logs
+pip-log.txt
+
+# Setup backups
+setup.cfg.bak
+setup.py.bak
+
+
+# ================================
+#  Testing
+# ================================
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+
+
+# ================================
+#  Data Files (Do Not Track Logs)
+# ================================
+# Model outputs or intermediate datasets
+data/
+**/data/
+datasets/
+examples/logs/
+*.jsonl
+*.jsonl.gz
+*.json.gz
+*.pickle
+*.pkl
+
+# If you want to keep sample logs, whitelist:
+#!data/sample_logs.jsonl
+
+
+# ================================
+#  IDE / Editor Files
+# ================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm / IntelliJ
+.idea/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# General editor settings
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+
+# ================================
+#  Visualization Outputs
+# ================================
+# Matplotlib, Plotly, PyVis export outputs
+figures/
+exports/
+visualizations/
+*.html
+*.png
+*.svg
+*.pdf
+
+
+# ================================
+#  Cache
+# ================================
+.cache/
+.pyre/
+.pytype/
+mypy_cache/
+__pypackages__/
+*.pyre/
+
+# HuggingFace cache (if used)
+huggingface/
+hf_cache/
+.hf_cache/
+
+.specstory/
