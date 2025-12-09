@@ -924,7 +924,7 @@ curl http://localhost:8001/api/graph/invalid123
 
 **Solution**:
 1. Check backend is running: `curl http://localhost:8001/health`
-2. Verify backend port is 8001 (not 8000)
+2. Verify backend port is 8001
 3. Check CORS settings in `backend/app/main.py`
 
 ---

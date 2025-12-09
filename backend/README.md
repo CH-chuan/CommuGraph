@@ -18,16 +18,16 @@ pip install -e .
 
 ```bash
 # With Poetry
-poetry run uvicorn app.main:app --reload --port 8000
+poetry run uvicorn app.main:app --reload --port 8001
 
 # Or directly with uvicorn
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8001
 ```
 
 The API will be available at:
-- **API**: http://localhost:8000
-- **Interactive Docs**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+- **API**: http://localhost:8001
+- **Interactive Docs**: http://localhost:8001/docs
+- **ReDoc**: http://localhost:8001/redoc
 
 ### Running Tests
 

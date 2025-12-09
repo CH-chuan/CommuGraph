@@ -1,5 +1,6 @@
 # figma prototype for reference only
 figma_prototype/
+.env
 
 # ================================
 #  Python General
@@ -127,6 +128,7 @@ examples/logs/
 
 # If you want to keep sample logs, whitelist:
 #!data/sample_logs.jsonl
+!frontend/public/mock_chat_history.jsonl
 
 
 # ================================

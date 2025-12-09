@@ -81,9 +81,9 @@ We recommend a unified command (via a root usage of `make` or `npm-run-all`) to 
 
 **Option A: Separate Terminals**
 1. **Frontend:** `npm run dev` (Runs Vite server on `localhost:5173`)
-2. **Backend:** `poetry run uvicorn app.main:app --reload` (Runs API on `localhost:8000`)
+2. **Backend:** `poetry run uvicorn app.main:app --reload` (Runs API on `localhost:1`)
 
-**Option B: Docker Compose**
+**Option B: Docker Compose** (for mutural stage only)
 `docker-compose up` spins up both services with hot-reloading enabled via volume mounts.
 
 ## 5. Build Pipeline
