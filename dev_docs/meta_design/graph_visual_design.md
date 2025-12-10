@@ -1,4 +1,4 @@
-# CommuGraph Visualization Design Specification (v2.0)
+# CommuGraph Visualization Design Specification (v3.0)
 
 ## 1. Executive Summary
 The visualization module consists of a **Split-View Architecture**. Users can toggle between two distinct modes to analyze Multi-Agent System (MAS) interactions:
@@ -45,9 +45,9 @@ We display the full history of interactions using a transparency gradient (Ghost
 
 | State | Opacity | Thickness | Animation | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **Current ($t$)** | 100% | 4px | Dashed Flow | The message happening *right now*. |
-| **Recent ($t-1$)** | 60% | 2px | Static | The immediate previous context. |
-| **History ($t-n$)** | 20% | 1px | Static | The "Ghost Web" showing established pathways. |
+| **Current ($t$)** | 100% | 5px | Rail & Flow (Solid + Dashed Overlay) | High contrast Orange #c2410c |
+| **Recent ($t-1$)** | 100% | 4px | Static | Source Color (High Clarity) |
+| **History ($t-n$)** | 40% | 2px | Static | Slate #94a3b8 |
 
 ### 3.3 Layout
 * **Algorithm:** Geometric (Circle/Polygon) or Force-Directed.
@@ -99,3 +99,24 @@ Instead of a "Directly-Follows Graph" (which gets messy with loops), we use a **
 | **Tooling** | **Internal State**. Rendered as a sub-component of the Agent Node (Drawer/Badge). |
 | **View Strategy** | **Swappable**. View A (Graph) for demos/overview. View B (Sequence) for deep-dive debugging. |
 | **Data Volume** | Optimization not required for < 50 items. Render full history for maximum context. |
+
+---
+
+## 7. Implementation Status (v3.0)
+
+### 7.1 Implemented Features
+*   **Smart Edge Routing:** Integrated `@tisoap/react-flow-smart-edge` for obstacle avoidance.
+*   **"Rail & Flow" Visuals:** Implemented dual-layer rendering (Solid Rail + Dashed Opaque Flow) to solve faintness/optical illusions.
+*   **Back-Edge "Under-Loops":** Custom routing logic for cycles (e.g., reply edges) to route underneath the graph (Bottom-to-Bottom) instead of cutting through.
+*   **Native Markers:** Switched to native SVG markers with `orient: auto` for perfect tangent alignment.
+*   **Rich Nodes:** Implemented fully as per spec (Icons, Pills, Tool Drawer capability).
+
+### 7.2 Pending / Not Implemented
+*   **View B (Sequence Mode):** Not yet implemented. Current work focused purely on Topology Mode (View A).
+*   **Smart Timeline:** Basic step navigation exists, but full Gantt-style timeline visualization is pending.
+*   **Force-Directed Layout:** Currently using `dagre` (Layered Digraph) with custom handle tweaks. Geometric circular layout is implemented for small N but Dagre is default.
+
+### 7.3 Differences from Original Design
+*   **Opacity Specs:** Original text called for 20%/60% opacity. This was found to be too faint. Updated to 40%/100% for better explicitness.
+*   **Arrow Size:** Reduced marker size to 12px (from default 20px) for better visual proportion.
+*   **Routing:** Added custom "Under-Loop" logic not originally specified to handle visual clutter of cycles.

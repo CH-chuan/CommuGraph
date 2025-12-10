@@ -51,9 +51,17 @@ export function GraphView() {
       highlightedAgentId,
       currentStep,
     });
+
+    // Create map of node colors for edges
+    const nodeColors = reactFlowNodes.reduce((acc, node) => {
+      acc[node.id] = (node.data as any).color;
+      return acc;
+    }, {} as Record<string, string>);
+
     const reactFlowEdges = convertEdgesToReactFlow(data.graph.edges, {
       currentStep,
       focusedAgentId, // Pass focused agent to edges
+      nodeColors,
     });
 
     return getLayoutedElements(reactFlowNodes, reactFlowEdges);
@@ -114,6 +122,7 @@ export function GraphView() {
         attributionPosition="bottom-right"
         minZoom={0.3}
         maxZoom={2}
+        proOptions={{ hideAttribution: true }} // Remove attribution to fix blank space issue
       >
         <Background gap={16} size={1} color="#e2e8f0" />
         <Controls showInteractive={false} />

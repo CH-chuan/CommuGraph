@@ -68,10 +68,12 @@ export const convertEdgesToReactFlow = (
   options?: {
     currentStep?: number;
     focusedAgentId?: string | null;
+    nodeColors?: Record<string, string>; // Pass node colors map
   }
 ): Edge[] => {
   const currentStep = options?.currentStep ?? 0;
   const focusedAgentId = options?.focusedAgentId;
+  const nodeColors = options?.nodeColors ?? {};
 
   // Build a set of bidirectional edge pairs
   const bidirectionalPairs = new Set<string>();
@@ -99,8 +101,33 @@ export const convertEdgesToReactFlow = (
       (i) => i.step_index <= currentStep
     ).length;
 
+    // Determine edge state (logic moved from GhostEdge for marker config)
+    const distance = currentStep - latestInteractionStep;
+    let edgeState: 'current' | 'recent' | 'history' = 'history';
+    if (distance <= 0) edgeState = 'current';
+    else if (distance === 1) edgeState = 'recent';
+
     // Determine if this edge should be highlighted (outgoing from focused agent)
     const isFocused = focusedAgentId ? edge.source === focusedAgentId : false;
+
+    // Get source node color
+    const sourceColor = nodeColors[edge.source];
+
+    // Style Configuration (Logic mirrored from GhostEdge to set Marker)
+    let strokeColor = '#94a3b8'; // Slate 400 (History)
+    let zIndex = 0;
+
+    if (edgeState === 'current') {
+      strokeColor = '#c2410c'; // Orange 700
+      zIndex = 10;
+    } else if (edgeState === 'recent') {
+      strokeColor = sourceColor || '#64748b';
+      zIndex = 5;
+    }
+
+    // Determine opacity/width helpers for component usage (optional, or pass state)
+    // We pass state and colors to data for GhostEdge to render the correct Path styles
+    // But we pass markerEnd HERE so React Flow creates the SVG definition.
 
     return {
       id: `${edge.source}-${edge.target}`,
@@ -109,10 +136,13 @@ export const convertEdgesToReactFlow = (
       label: edge.weight.toString(),
       type: 'ghost', // Use custom GhostEdge component
       animated: false,
+      zIndex, // Ensure current edges are on top
       markerEnd: {
         type: 'arrowclosed',
-        width: 16,
-        height: 16,
+        width: 12,
+        height: 12,
+        color: strokeColor, // Native marker takes this color
+        orient: 'auto', // Ensure arrow is parallel to the edge tail
       },
       data: {
         interactions: edge.interactions,
@@ -122,6 +152,7 @@ export const convertEdgesToReactFlow = (
         latestInteractionStep,
         isFocused,
         currentInteractionCount,
+        sourceColor,
       },
     };
   });
@@ -179,10 +210,13 @@ export const getLayoutedElements = (
 
   dagre.layout(dagreGraph);
 
-  const layoutedNodes = nodes.map((node) => {
+  // 1. Map nodes with layout positions
+  const nodesWithPositions = nodes.map((node) => {
     const nodeWithPosition = dagreGraph.node(node.id);
     return {
       ...node,
+      targetPosition: 'left' as const,
+      sourcePosition: 'right' as const,
       position: {
         x: nodeWithPosition.x - NODE_WIDTH / 2,
         y: nodeWithPosition.y - NODE_HEIGHT / 2,
@@ -190,5 +224,48 @@ export const getLayoutedElements = (
     };
   });
 
-  return { nodes: layoutedNodes, edges };
+  // 2. Map edges with handle assignment based on positions
+  const edgesWithHandles = edges.map((edge) => {
+    const sourceNode = nodesWithPositions.find((n) => n.id === edge.source);
+    const targetNode = nodesWithPositions.find((n) => n.id === edge.target);
+
+    // Default: Forward Edge (Left -> Right)
+    let sourceHandle = 'right';
+    let targetHandle = 'left';
+
+    if (sourceNode && targetNode) {
+      // Check for Back-Edge (Source is to the right of Target, with buffer)
+      if (sourceNode.position.x > targetNode.position.x + 50) {
+        // Back-Edge Routing Logic
+        const dy = sourceNode.position.y - targetNode.position.y;
+
+        if (Math.abs(dy) < 50) {
+          // Case A: Roughly Horizontal (Same Level) e.g. Manager -> User
+          // Use Bottom -> Bottom "Under Loop"
+          sourceHandle = 'bottom-source';
+          targetHandle = 'bottom-target';
+        } else {
+          // Case B: Diagonal / Vertical Step Back (e.g. Coder -> Manager)
+          // Use Left Source (Project Backwards)
+          sourceHandle = 'left-source';
+
+          if (dy < 0) {
+            // Source is ABOVE Target (dy negative) -> Enter Top
+            targetHandle = 'top-target';
+          } else {
+            // Source is BELOW Target (dy positive) -> Enter Bottom
+            targetHandle = 'bottom-target';
+          }
+        }
+      }
+    }
+
+    return {
+      ...edge,
+      sourceHandle,
+      targetHandle,
+    };
+  });
+
+  return { nodes: nodesWithPositions, edges: edgesWithHandles };
 };

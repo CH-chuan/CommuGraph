@@ -2,12 +2,13 @@
  * GhostEdge - Temporal Edge Component with Visual Recession
  *
  * Design spec (Ghost Trails):
- * - Current (t):   100% opacity, 4px thickness, dashed flow animation
- * - Recent (t-1):  60% opacity, 2px thickness, static
- * - History (t-n): 20% opacity, 1px thickness, static
+ * - Current (t):   100% opacity, 4px thickness, dashed flow animation, Orange color, Smart Routing
+ * - Recent (t-1):  60% opacity, 2px thickness, static, Source Color
+ * - History (t-n): 20% opacity, 1px thickness, static, Slate
  */
 
-import { BaseEdge, EdgeLabelRenderer, type EdgeProps, getSmoothStepPath } from '@xyflow/react';
+import { BaseEdge, EdgeLabelRenderer, type EdgeProps, getSmoothStepPath, useNodes } from '@xyflow/react';
+import { getSmartEdge } from '@tisoap/react-flow-smart-edge';
 
 export interface GhostEdgeData {
   interactions: Array<{ step_index: number }>;
@@ -17,6 +18,7 @@ export interface GhostEdgeData {
   latestInteractionStep?: number;
   isFocused?: boolean;
   currentInteractionCount?: number;
+  sourceColor?: string;
 }
 
 // Determine edge visual state based on temporal distance
@@ -29,12 +31,7 @@ const getEdgeState = (latestStep: number, currentStep: number): EdgeState => {
   return 'history';
 };
 
-// Style configurations for each state
-const edgeStyles: Record<EdgeState, { opacity: number; strokeWidth: number; dashArray?: string }> = {
-  current: { opacity: 1, strokeWidth: 4, dashArray: '8 4' },
-  recent: { opacity: 0.6, strokeWidth: 2 },
-  history: { opacity: 0.2, strokeWidth: 1 },
-};
+
 
 export function GhostEdge({
   id,
@@ -49,89 +46,167 @@ export function GhostEdge({
   data,
   style,
 }: EdgeProps) {
+  const nodes = useNodes();
   const edgeData = data as GhostEdgeData | undefined;
   const isBidirectional = edgeData?.isBidirectional ?? false;
   const currentStep = edgeData?.currentStep ?? 0;
   const latestInteractionStep = edgeData?.latestInteractionStep ?? 0;
   const isFocused = edgeData?.isFocused ?? false;
   const currentInteractionCount = edgeData?.currentInteractionCount ?? 0;
+  const sourceColor = edgeData?.sourceColor || '#64748b';
 
   // Determine edge state
   const edgeState = getEdgeState(latestInteractionStep, currentStep);
-  const stateStyle = edgeStyles[edgeState];
 
-  // Check if any edge is focused (if so, dim non-focused edges)
-  const hasFocusedEdge = data && 'isFocused' in data && data.isFocused !== undefined;
+  // Style configurations
+  // Current: Orange, Thick
+  // Recent: Source Color, Medium
+  // History: Slate, Thin
+  let strokeColor = '#64748b';
+  let strokeWidth = 1;
+  let opacity = 0.2;
+  let dashArray = undefined;
 
-  // Add offset for bidirectional edges to prevent overlap
-  const offset = isBidirectional ? 15 : 0;
-
-  // Calculate perpendicular offset
-  const dx = targetX - sourceX;
-  const dy = targetY - sourceY;
-  const length = Math.sqrt(dx * dx + dy * dy) || 1;
-  const perpX = -dy / length;
-  const perpY = dx / length;
-
-  // Apply offset
-  const offsetSourceX = sourceX + perpX * offset;
-  const offsetSourceY = sourceY + perpY * offset;
-  const offsetTargetX = targetX + perpX * offset;
-  const offsetTargetY = targetY + perpY * offset;
-
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
-    sourceX: offsetSourceX,
-    sourceY: offsetSourceY,
-    sourcePosition,
-    targetX: offsetTargetX,
-    targetY: offsetTargetY,
-    targetPosition,
-    borderRadius: 8,
-  });
-
-  // Determine visual styling
-  let finalOpacity = stateStyle.opacity;
-  let finalStrokeWidth = stateStyle.strokeWidth;
-  let finalStroke = edgeState === 'current' ? '#3b82f6' : '#64748b';
-
-  // If this edge is focused, enhance it
-  if (isFocused) {
-    finalOpacity = 1;
-    finalStrokeWidth = Math.max(stateStyle.strokeWidth, 5);
-    finalStroke = '#10b981'; // Emerald green for focused edges
-  } else if (hasFocusedEdge && !isFocused) {
-    // Dim non-focused edges when there's a focus
-    finalOpacity = stateStyle.opacity * 0.15;
+  switch (edgeState) {
+    case 'current':
+      strokeColor = '#f97316'; // Orange
+      strokeWidth = 5;
+      opacity = 1; // Fully opaque
+      dashArray = '10 5'; // Tighter dash for better "ink" ratio
+      break;
+    case 'recent':
+      strokeColor = sourceColor; // Source node color
+      strokeWidth = 4;
+      opacity = 1; // Fully opaque
+      break;
+    case 'history':
+      strokeColor = '#94a3b8'; // Slate 400
+      strokeWidth = 2;
+      opacity = 0.4;
+      break;
   }
 
-  // Merged styles
-  const mergedStyle = {
-    ...style,
-    strokeWidth: finalStrokeWidth,
-    opacity: finalOpacity,
-    strokeDasharray: stateStyle.dashArray,
-    stroke: finalStroke,
-  };
+  // Override for focused state
+  const hasFocusedEdge = data && 'isFocused' in data && data.isFocused !== undefined;
+  if (isFocused) {
+    strokeColor = '#10b981'; // Emerald 500
+    strokeWidth = 6;
+    opacity = 1;
+    dashArray = '10 5';
+  } else if (hasFocusedEdge) {
+    opacity = 0.1; // Dim others
+  }
+
+  // Calculate Path using Smart Edge
+  const smartEdgeResult = getSmartEdge({
+    sourcePosition,
+    targetPosition,
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    nodes,
+    options: {
+      nodePadding: 40, // Reduced curvature near nodes to align arrows better
+      gridRatio: 10,
+    }
+  });
+
+  // Fallback to smooth step
+  let edgePath = '';
+  let labelX = 0;
+  let labelY = 0;
+
+  if (smartEdgeResult && 'svgPathString' in smartEdgeResult) {
+    edgePath = smartEdgeResult.svgPathString;
+    labelX = smartEdgeResult.edgeCenterX;
+    labelY = smartEdgeResult.edgeCenterY;
+  } else {
+    // Manual fallback with offset for bidirectional
+    const offset = isBidirectional ? 20 : 0; // Increased offset
+
+    // Perpendicular offset calculation for smoothstep fallback
+    const dx = targetX - sourceX;
+    const dy = targetY - sourceY;
+    const length = Math.sqrt(dx * dx + dy * dy) || 1;
+    const perpX = -dy / length;
+    const perpY = dx / length;
+
+    const offsetSourceX = sourceX + perpX * offset;
+    const offsetSourceY = sourceY + perpY * offset;
+    const offsetTargetX = targetX + perpX * offset;
+    const offsetTargetY = targetY + perpY * offset;
+
+    [edgePath, labelX, labelY] = getSmoothStepPath({
+      sourceX: offsetSourceX,
+      sourceY: offsetSourceY,
+      sourcePosition,
+      targetX: offsetTargetX,
+      targetY: offsetTargetY,
+      targetPosition,
+      borderRadius: 12, // Increased radius
+    });
+  }
+
+  // Merged edge style for the BaseEdge (which works as the Rail or main line)
+  // If current, we want a solid Rail first, then the Flow on top.
+  // BaseEdge in React Flow usually renders the 'interaction' invisible path + the visible stroke.
+  // We can treat BaseEdge as the "Rail" if we style it as solid/lighter,
+  // then add a custom <path> on top for the Flow.
+
+  // CURRENT STRATEGY:
+  // BaseEdge: Used as the "Rail" (solid background) for Current/Focused.
+  //           Used as normal solid line for Recent/History.
+  // Overlay <path>: Used as "Flow" (dashed animation) for Current/Focused.
+
+  let railStyle = { ...style, strokeWidth, opacity };
+
+  if (edgeState === 'current' || isFocused) {
+    // RAIL STYLE (Solid, lighter)
+    // For Orange 700 flow, use Orange 200/300 for rail
+    const railColor = isFocused ? '#d1fae5' : '#fed7aa'; // Emerald 100 or Orange 200
+    railStyle = {
+      ...railStyle,
+      stroke: railColor,
+      strokeDasharray: undefined, // Solid
+      opacity: 1, // Rail is solid 
+    };
+  } else {
+    // STANDARD STYLE
+    railStyle = {
+      ...railStyle,
+      stroke: strokeColor,
+      strokeDasharray: dashArray,
+      opacity,
+    };
+  }
+
+  // Custom Arrow Head
+  // Correctly rotate based on target handle position
+  // REMOVED: Using native React Flow markers (passed via markerEnd prop to BaseEdge) 
+  // to ensure perfect alignment with Smart Edge path tangents.
 
   return (
     <>
-      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={mergedStyle} />
+      {/* Base Layer / Rail (Marker attached here) */}
+      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={railStyle} />
 
-      {/* Animated dash for current or focused edges */}
+      {/* Top Layer / Flow (Current or Focused only) */}
       {(edgeState === 'current' || isFocused) && (
         <path
           d={edgePath}
           fill="none"
-          stroke={isFocused ? '#10b981' : '#3b82f6'}
-          strokeWidth={finalStrokeWidth}
-          strokeDasharray="8 4"
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+          strokeDasharray={dashArray}
           strokeLinecap="round"
           className="animate-dash-flow"
+          style={{ opacity: 1 }} // Flow is opaque
         />
       )}
 
       <EdgeLabelRenderer>
-        {/* Always show label when focused, otherwise show for current/recent edges */}
+        {/* Label (Interaction Count) */}
         {(isFocused || (label && edgeState !== 'history')) && (
           <div
             style={{
@@ -143,11 +218,13 @@ export function GhostEdge({
           >
             <div
               className={`
-                px-2.5 py-1 rounded-full text-xs font-bold
-                ${isFocused ? 'bg-emerald-500 text-white shadow-lg' :
-                  edgeState === 'current' ? 'bg-blue-500 text-white' :
-                  'bg-slate-100 text-slate-600'}
+                px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm border
               `}
+              style={{
+                backgroundColor: isFocused ? '#10b981' : (edgeState === 'current' ? '#fff7ed' : '#f8fafc'),
+                color: isFocused ? '#fff' : strokeColor,
+                borderColor: strokeColor,
+              }}
             >
               {isFocused ? `${currentInteractionCount}` : label}
             </div>
