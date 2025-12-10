@@ -115,21 +115,20 @@ export const convertEdgesToReactFlow = (
     // Get source node color
     const sourceColor = nodeColors[edge.source];
 
-    // Style Configuration (Logic mirrored from GhostEdge to set Marker)
+    // Style Configuration and zIndex for rendering order
     let strokeColor = '#94a3b8'; // Slate 400 (History)
-    let zIndex = 0;
+    let zIndex = 1;
 
-    if (edgeState === 'current') {
+    if (isFocused) {
+      strokeColor = '#10b981'; // Emerald (Focused)
+      zIndex = 1000; // Render focused edges on top of everything
+    } else if (edgeState === 'current') {
       strokeColor = '#c2410c'; // Orange 700
-      zIndex = 10;
+      zIndex = 100; // Render current edges above regular edges
     } else if (edgeState === 'recent') {
       strokeColor = sourceColor || '#64748b';
-      zIndex = 5;
+      zIndex = 50; // Render recent edges above history
     }
-
-    // Determine opacity/width helpers for component usage (optional, or pass state)
-    // We pass state and colors to data for GhostEdge to render the correct Path styles
-    // But we pass markerEnd HERE so React Flow creates the SVG definition.
 
     return {
       id: `${edge.source}-${edge.target}`,
@@ -138,14 +137,7 @@ export const convertEdgesToReactFlow = (
       label: edge.weight.toString(),
       type: 'ghost', // Use custom GhostEdge component
       animated: false,
-      zIndex, // Ensure current edges are on top
-      markerEnd: {
-        type: 'arrowclosed',
-        width: 12,
-        height: 12,
-        color: strokeColor, // Native marker takes this color
-        orient: 'auto', // Ensure arrow is parallel to the edge tail
-      },
+      zIndex, // Ensure proper rendering order (higher = on top)
       data: {
         interactions: edge.interactions,
         weight: edge.weight,

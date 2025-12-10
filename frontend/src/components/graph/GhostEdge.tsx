@@ -181,15 +181,39 @@ export function GhostEdge({
     };
   }
 
-  // Custom Arrow Head
-  // Correctly rotate based on target handle position
-  // REMOVED: Using native React Flow markers (passed via markerEnd prop to BaseEdge) 
-  // to ensure perfect alignment with Smart Edge path tangents.
+  // Custom Arrow Head - Extra small for current/focused (5x5), regular for others (5x5)
+  // Current step arrows are more subtle to avoid visual clutter
+  const arrowSize = (edgeState === 'current' || isFocused) ? 5 : 5;
+  const arrowId = `arrow-${id}`;
 
   return (
     <>
-      {/* Base Layer / Rail (Marker attached here) */}
-      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={railStyle} />
+      {/* SVG Marker Definition - Positioned at edge end with original orientation */}
+      <defs>
+        <marker
+          id={arrowId}
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth={arrowSize}
+          markerHeight={arrowSize}
+          orient="auto"
+          markerUnits="strokeWidth"
+        >
+          <path
+            d="M 0 0 L 10 5 L 0 10 z"
+            fill={strokeColor}
+          />
+        </marker>
+      </defs>
+
+      {/* Base Layer / Rail */}
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        markerEnd={`url(#${arrowId})`}
+        style={railStyle}
+      />
 
       {/* Top Layer / Flow (Current or Focused only) */}
       {(edgeState === 'current' || isFocused) && (
@@ -200,8 +224,9 @@ export function GhostEdge({
           strokeWidth={strokeWidth}
           strokeDasharray={dashArray}
           strokeLinecap="round"
+          markerEnd={`url(#${arrowId})`}
           className="animate-dash-flow"
-          style={{ opacity: 1 }} // Flow is opaque
+          style={{ opacity: 1 }}
         />
       )}
 

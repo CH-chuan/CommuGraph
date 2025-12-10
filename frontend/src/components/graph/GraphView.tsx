@@ -122,10 +122,17 @@ export function GraphView() {
         attributionPosition="bottom-right"
         minZoom={0.3}
         maxZoom={2}
-        proOptions={{ hideAttribution: true }} // Remove attribution to fix blank space issue
+        proOptions={{ hideAttribution: true }}
+        elevateEdgesOnSelect={true} // Bring selected edges to front
       >
         <Background gap={16} size={1} color="#e2e8f0" />
         <Controls showInteractive={false} />
+        {/* Global SVG definitions for better z-index control */}
+        <svg style={{ position: 'absolute', width: 0, height: 0 }}>
+          <defs>
+            {/* Markers will be defined by individual edges but this ensures proper SVG context */}
+          </defs>
+        </svg>
       </ReactFlow>
     </div>
   );
