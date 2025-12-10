@@ -18,7 +18,9 @@ export type AgentStatus = 'idle' | 'generating' | 'waiting' | 'tool_use';
 // Props for the agent node data
 export interface AgentNodeData {
   label: string;
-  message_count: number;
+  message_count: number; // Deprecated, use messages_sent
+  messages_sent: number;
+  messages_received: number;
   status?: AgentStatus;
   role?: string;
   activeTool?: string | null;
@@ -138,7 +140,7 @@ function AgentNodeComponent({ data, selected }: NodeProps) {
               {nodeData.label}
             </h3>
             <p className="text-xs text-slate-500">
-              {nodeData.message_count} messages
+              {nodeData.messages_sent} sent, {nodeData.messages_received} recv
             </p>
           </div>
         </div>

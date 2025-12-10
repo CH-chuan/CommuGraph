@@ -213,17 +213,19 @@ export function GhostEdge({
               position: 'absolute',
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
               pointerEvents: 'all',
+              zIndex: 1000,
             }}
             className="nodrag nopan"
           >
             <div
               className={`
-                px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm border
+                px-2 py-0.5 rounded-full text-[10px] font-bold shadow-md border-2
               `}
               style={{
-                backgroundColor: isFocused ? '#10b981' : (edgeState === 'current' ? '#fff7ed' : '#f8fafc'),
+                backgroundColor: isFocused ? '#10b981' : (edgeState === 'current' ? '#ffffff' : '#ffffff'),
                 color: isFocused ? '#fff' : strokeColor,
                 borderColor: strokeColor,
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.25)',
               }}
             >
               {isFocused ? `${currentInteractionCount}` : label}

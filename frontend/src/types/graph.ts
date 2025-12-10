@@ -45,7 +45,9 @@ export interface EdgeData {
 export interface NodeData {
   id: string;
   label: string;
-  message_count: number;
+  message_count: number; // Deprecated, use messages_sent
+  messages_sent: number;
+  messages_received: number;
   first_appearance?: string | null;
   last_activity?: string | null;
   metadata?: Record<string, any>;

@@ -1,6 +1,6 @@
 # CommuGraph User Interactions Reference
 
-**Last Updated**: 2025-12-09
+**Last Updated**: 2025-12-10
 
 This document describes all supported user interactions in the CommuGraph visualization interface.
 
@@ -25,7 +25,7 @@ This document describes all supported user interactions in the CommuGraph visual
 - Agent-specific color border (8-color palette)
 - Role-based icon (top-left): Manager, Coder, Assistant, Bot
 - Agent name (bold)
-- Message count
+- **Time-based message counts**: "X sent, Y recv" (shows counts up to current step only)
 - Status pill: Idle, Generating, Waiting, Tool Use
 
 **Interactions:**
@@ -57,12 +57,12 @@ This document describes all supported user interactions in the CommuGraph visual
 **Visual Elements:**
 - Directed arrows showing message flow (A → B)
 - Temporal opacity gradient:
-  - **Current step (t)**: 100% opacity, 4px width, blue color, animated dashed flow
-  - **Recent step (t-1)**: 60% opacity, 2px width, gray color
-  - **Historical (t-n)**: 20% opacity, 1px width, gray color
-  - **Focused (agent double-click)**: 100% opacity, 5px width, emerald green color, animated dashed flow
-- Edge labels show interaction count (always visible on current/recent edges, or when focused)
-- Bidirectional edges (A↔B) are offset by 15px to prevent overlap
+  - **Current step (t)**: 100% opacity, 5px width, orange (#f97316), animated dashed flow
+  - **Recent step (t-1)**: 100% opacity, 4px width, agent color
+  - **Historical (t-n)**: 40% opacity, 2px width, slate gray (#94a3b8)
+  - **Focused (agent double-click)**: 100% opacity, 6px width, emerald green (#10b981), animated dashed flow
+- **Edge labels**: Interaction count badges with solid white background, strong shadow (z-index 1000), always visible above edges (always visible on current/recent edges, or when focused)
+- Bidirectional edges (A↔B) are offset by 20px to prevent overlap
 
 **Interactions:**
 
@@ -144,9 +144,9 @@ This document describes all supported user interactions in the CommuGraph visual
 
 | Button | Icon | Action | Keyboard Shortcut |
 |--------|------|--------|-------------------|
-| **Skip Back** | ⏮ | Jump to step 0 | *(Not yet implemented)* |
+| **Previous Step** | ◀ (ChevronLeft) | Go back 1 step (disabled at step 0) | *(Arrow Left - planned)* |
 | **Play/Pause** | ▶/⏸ | Start/stop animation (1 step/second) | *(Space - planned)* |
-| **Skip Forward** | ⏭ | Jump to final step | *(Not yet implemented)* |
+| **Next Step** | ▶ (ChevronRight) | Go forward 1 step (disabled at last step) | *(Arrow Right - planned)* |
 
 ### Slider
 

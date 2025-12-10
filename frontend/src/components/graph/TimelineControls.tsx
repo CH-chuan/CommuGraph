@@ -9,7 +9,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, ChevronDown, ChevronUp } from 'lucide-react';
+import { Play, Pause, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { useAppContext } from '@/context/AppContext';
@@ -23,7 +23,7 @@ const BLOCK_HEIGHT = 24;
 
 export function TimelineControls() {
   const { graphId, currentStep, setCurrentStep, totalSteps, setHighlightedAgentId } = useAppContext();
-  const { isPlaying, play, pause, reset } = useTimelinePlayback();
+  const { isPlaying, play, pause } = useTimelinePlayback();
   const { data } = useGraphData(graphId, undefined); // Get full data for timeline
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -63,14 +63,21 @@ export function TimelineControls() {
     <div className="border-t bg-white">
       {/* Playback Controls Row */}
       <div className="flex items-center gap-3 p-3 border-b">
-        <Button variant="outline" size="icon" onClick={reset}>
-          <SkipBack className="h-4 w-4" />
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}
+          disabled={currentStep === 0}
+          title="Previous step"
+        >
+          <ChevronLeft className="h-4 w-4" />
         </Button>
 
         <Button
           variant="outline"
           size="icon"
           onClick={isPlaying ? pause : play}
+          title={isPlaying ? "Pause" : "Play"}
         >
           {isPlaying ? (
             <Pause className="h-4 w-4" />
@@ -82,9 +89,11 @@ export function TimelineControls() {
         <Button
           variant="outline"
           size="icon"
-          onClick={() => setCurrentStep(totalSteps)}
+          onClick={() => setCurrentStep(Math.min(totalSteps, currentStep + 1))}
+          disabled={currentStep === totalSteps}
+          title="Next step"
         >
-          <SkipForward className="h-4 w-4" />
+          <ChevronRight className="h-4 w-4" />
         </Button>
 
         <div className="flex-1 px-4">

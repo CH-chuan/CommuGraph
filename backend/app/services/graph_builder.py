@@ -89,6 +89,8 @@ class GraphBuilder:
                 'id': node_id,
                 'label': node_id,
                 'message_count': 0,
+                'messages_sent': 0,
+                'messages_received': 0,
                 'first_appearance': message.timestamp,
                 'last_activity': message.timestamp,
                 'metadata': {}
@@ -98,10 +100,15 @@ class GraphBuilder:
         # Update metadata
         if message.sender == node_id:
             node_metadata[node_id]['message_count'] += 1
+            node_metadata[node_id]['messages_sent'] += 1
             node_metadata[node_id]['last_activity'] = max(
                 node_metadata[node_id]['last_activity'],
                 message.timestamp
             )
+
+        # Track received messages
+        if message.receiver == node_id:
+            node_metadata[node_id]['messages_received'] += 1
 
     def _add_interaction(self, message: Message) -> None:
         """
@@ -227,10 +234,34 @@ class GraphBuilder:
         # Use filtered graph if max_step provided
         graph_to_use = self.filter_graph_by_step(max_step) if max_step else self.graph
 
+        # Calculate time-based message counts if max_step is provided
+        time_based_sent_counts = {}
+        time_based_received_counts = {}
+        if max_step is not None:
+            # Count messages sent and received by each agent up to max_step
+            for message in self.messages:
+                if message.step_index <= max_step:
+                    sender = message.sender
+                    time_based_sent_counts[sender] = time_based_sent_counts.get(sender, 0) + 1
+
+                    if message.receiver:
+                        receiver = message.receiver
+                        time_based_received_counts[receiver] = time_based_received_counts.get(receiver, 0) + 1
+
         # Convert nodes
         nodes = []
         for node_id in graph_to_use.nodes():
-            node_data_dict = graph_to_use.nodes[node_id]
+            node_data_dict = graph_to_use.nodes[node_id].copy()
+
+            # Override counts with time-based counts if max_step is provided
+            if max_step is not None:
+                sent_count = time_based_sent_counts.get(node_id, 0)
+                received_count = time_based_received_counts.get(node_id, 0)
+
+                node_data_dict['message_count'] = sent_count  # For backwards compatibility
+                node_data_dict['messages_sent'] = sent_count
+                node_data_dict['messages_received'] = received_count
+
             nodes.append(NodeData(**node_data_dict))
 
         # Convert edges

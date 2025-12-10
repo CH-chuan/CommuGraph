@@ -121,7 +121,9 @@ class NodeData(BaseModel):
     """
     id: str = Field(..., description="Unique agent identifier")
     label: str = Field(..., description="Display name for the agent")
-    message_count: int = Field(default=0, description="Total messages sent by this agent")
+    message_count: int = Field(default=0, description="Total messages sent by this agent (deprecated, use messages_sent)")
+    messages_sent: int = Field(default=0, description="Total messages sent by this agent")
+    messages_received: int = Field(default=0, description="Total messages received by this agent")
     first_appearance: Optional[datetime] = Field(None, description="First time agent appeared in conversation")
     last_activity: Optional[datetime] = Field(None, description="Last time agent sent a message")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional node properties")
@@ -132,6 +134,8 @@ class NodeData(BaseModel):
                 "id": "Manager",
                 "label": "Manager",
                 "message_count": 15,
+                "messages_sent": 15,
+                "messages_received": 8,
                 "first_appearance": "2024-01-15T10:00:00Z",
                 "last_activity": "2024-01-15T11:00:00Z",
                 "metadata": {"role": "coordinator"}

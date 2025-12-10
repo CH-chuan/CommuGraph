@@ -477,12 +477,13 @@ const { data: graphData } = useQuery({
 10. ✅ Full backend integration via API
 
 **Phase 3: Advanced Visualization** ✅ **COMPLETE** (Based on `dev_docs/graph_visual_design.md`)
-1. ✅ **Rich Card Nodes** (`AgentNode.tsx`) - Rectangular cards with role-based icons, names, status pills (idle/generating/waiting/tool_use), agent color coding, tool drawer for active tools
+1. ✅ **Rich Card Nodes** (`AgentNode.tsx`) - Rectangular cards with role-based icons, names, status pills (idle/generating/waiting/tool_use), agent color coding, tool drawer for active tools, **time-based message counts** (shows "X sent, Y recv" up to current step)
 2. ✅ **Ghost Trail Edges** (`GhostEdge.tsx`) - Smart edge routing with temporal states:
    - Current (t): 100% opacity, 5px, Orange (#f97316), dashed flow animation
    - Recent (t-1): 100% opacity, 4px, Source Color (agent-specific)
    - History (t-n): 40% opacity, 2px, Slate (#94a3b8)
-3. ✅ **Gantt-Style Timeline** (`TimelineControls.tsx`) - Agent tracks with colored activity blocks, click-to-navigate to step, hover highlights agent, collapsible panel
+   - **Edge labels**: Solid white background, z-index 1000, strong shadow (0 2px 8px rgba(0,0,0,0.25)), always visible above edges
+3. ✅ **Gantt-Style Timeline** (`TimelineControls.tsx`) - Agent tracks with colored activity blocks, click-to-navigate to step, hover highlights agent, collapsible panel, **single-step navigation** (ChevronLeft/ChevronRight arrows move ±1 step)
 4. ✅ **Chat Log with Cross-Highlighting** (`ChatLog.tsx`) - Displays full messages with sender→receiver, hover highlights agents and step, auto-scroll to current step
 5. ✅ **Interactive Message Cards** - Expandable for long messages (>80 chars, line-clamp-2 with max-h-64 scroll), double-click to jump and highlight sender, single-click to navigate
 6. ✅ **Bidirectional Edge Handling** - Smart handle routing with multiple connection points (left/right/top/bottom handles) to prevent overlap, offset edges for A→B and B→A
@@ -493,10 +494,11 @@ const { data: graphData } = useQuery({
 **What's Working End-to-End**:
 - ✅ Upload JSONL/JSON log files through UI
 - ✅ Backend parses and builds temporal graph with full message content
-- ✅ Rich Card nodes with role-based icons, status indicators, and agent color-coded borders
+- ✅ Rich Card nodes with role-based icons, status indicators, agent color-coded borders, and **time-based message counts** ("X sent, Y recv" up to current step)
 - ✅ Ghost Trail edges with temporal states (Current: Orange 5px dashed, Recent: Agent Color 4px, History: Slate 2px 40% opacity)
+- ✅ **Edge labels** with solid white background, z-index 1000, strong shadow - always visible above edges
 - ✅ Smart edge routing with bidirectional support and multiple connection handles
-- ✅ Gantt timeline with agent tracks - hover highlights agent, click block navigates to step, collapsible panel
+- ✅ Gantt timeline with agent tracks - hover highlights agent, click block navigates to step, collapsible panel, **ChevronLeft/ChevronRight for single-step navigation** (±1 step)
 - ✅ Chat log with full messages - hover highlights sender and step, single-click navigates, double-click jumps and highlights sender
 - ✅ Expandable message cards (>80 chars show "Show more" button with line-clamp, max-h-64 with scroll)
 - ✅ Edge focus mode - double-click node to highlight outgoing edges, single-click to clear

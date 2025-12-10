@@ -50,6 +50,8 @@ export const convertNodesToReactFlow = (
     data: {
       label: node.label,
       message_count: node.message_count,
+      messages_sent: node.messages_sent,
+      messages_received: node.messages_received,
       status: 'idle', // TODO: determine from current step data
       role: node.metadata?.role,
       activeTool: null, // TODO: determine from current step data
