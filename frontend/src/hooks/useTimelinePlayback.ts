@@ -10,7 +10,7 @@ import { useAppContext } from '@/context/AppContext';
 export const useTimelinePlayback = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const { currentStep, setCurrentStep, totalSteps } = useAppContext();
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<number | null>(null);
 
   const play = () => setIsPlaying(true);
   const pause = () => setIsPlaying(false);
@@ -21,8 +21,8 @@ export const useTimelinePlayback = () => {
 
   useEffect(() => {
     if (isPlaying && currentStep < totalSteps) {
-      intervalRef.current = setInterval(() => {
-        setCurrentStep((prev) => {
+      intervalRef.current = window.setInterval(() => {
+        setCurrentStep((prev: number) => {
           if (prev >= totalSteps) {
             setIsPlaying(false);
             return prev;
@@ -33,7 +33,7 @@ export const useTimelinePlayback = () => {
     }
 
     return () => {
-      if (intervalRef.current) {
+      if (intervalRef.current !== null) {
         clearInterval(intervalRef.current);
       }
     };

@@ -5,23 +5,27 @@
  * Keep snake_case to match backend naming.
  */
 
-export enum MessageType {
-  THOUGHT = 'thought',
-  ACTION = 'action',
-  OBSERVATION = 'observation',
-  DELEGATION = 'delegation',
-  RESPONSE = 'response',
-  SYSTEM = 'system',
-}
+export const MessageType = {
+  THOUGHT: 'thought',
+  ACTION: 'action',
+  OBSERVATION: 'observation',
+  DELEGATION: 'delegation',
+  RESPONSE: 'response',
+  SYSTEM: 'system',
+} as const;
 
-export enum IntentLabel {
-  DELEGATION = 'delegation',
-  INFORMATION_REQUEST = 'information_request',
-  INFORMATION_RESPONSE = 'information_response',
-  FEEDBACK = 'feedback',
-  COORDINATION = 'coordination',
-  UNKNOWN = 'unknown',
-}
+export type MessageType = typeof MessageType[keyof typeof MessageType];
+
+export const IntentLabel = {
+  DELEGATION: 'delegation',
+  INFORMATION_REQUEST: 'information_request',
+  INFORMATION_RESPONSE: 'information_response',
+  FEEDBACK: 'feedback',
+  COORDINATION: 'coordination',
+  UNKNOWN: 'unknown',
+} as const;
+
+export type IntentLabel = typeof IntentLabel[keyof typeof IntentLabel];
 
 export interface Interaction {
   step_index: number;

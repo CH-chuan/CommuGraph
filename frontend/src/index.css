@@ -57,3 +57,34 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Graph Edge Animations */
+@keyframes dash-flow {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-dash-flow {
+  animation: dash-flow 1s linear infinite;
+}
+
+/* Sequence Diagram Styles */
+.sequence-lifeline {
+  stroke-dasharray: 6 4;
+}
+
+/* Agent color palette */
+:root {
+  --agent-color-1: #3b82f6; /* blue */
+  --agent-color-2: #10b981; /* emerald */
+  --agent-color-3: #f59e0b; /* amber */
+  --agent-color-4: #8b5cf6; /* violet */
+  --agent-color-5: #ef4444; /* red */
+  --agent-color-6: #ec4899; /* pink */
+  --agent-color-7: #06b6d4; /* cyan */
+  --agent-color-8: #84cc16; /* lime */
+}

@@ -444,13 +444,13 @@ const { data: graphData } = useQuery({
 
 ## Project Status
 
-**Current State**: Phase 2 Complete - Full-stack MVP is working! Backend + Frontend integrated with graph visualization and timeline scrubbing.
+**Current State**: Phase 3 Complete - Advanced visualization with Rich Nodes, Ghost Trails, and Interactive Features!
 
-**Last Updated**: 2025-12-08
+**Last Updated**: 2025-12-09
 
 **Servers Running**:
 - Backend: http://localhost:8001 (FastAPI with auto-reload) ✅ Active
-- Frontend: http://localhost:5173 (Vite dev server) ✅ Active
+- Frontend: http://localhost:5173 (Vite dev server, configurable via PORT env var) ✅ Active
 
 **Implementation Priority**:
 
@@ -460,8 +460,9 @@ const { data: graphData } = useQuery({
 3. ✅ Graph builder service with NetworkX - Time-based filtering, metrics calculation
 4. ✅ FastAPI endpoints (upload, graph retrieval, session management)
 5. ✅ Session management service - In-memory session storage
-6. ✅ Comprehensive test suite - 19 tests passing, including parsers and graph logic
-7. ✅ API documentation - Auto-generated OpenAPI docs at `/docs`
+6. ✅ Full message content storage in interaction metadata (not just 100-char preview)
+7. ✅ Comprehensive test suite - 19 tests passing, including parsers and graph logic
+8. ✅ API documentation - Auto-generated OpenAPI docs at `/docs`
 
 **Phase 2: Frontend MVP** ✅ **COMPLETE**
 1. ✅ Vite + React + TypeScript setup with Tailwind CSS
@@ -470,43 +471,55 @@ const { data: graphData } = useQuery({
 4. ✅ Timeline controls with play/pause/scrubbing (1 step/second animation)
 5. ✅ PreFlightModal file upload UI
 6. ✅ TypeScript types mirroring backend Pydantic models
-7. ✅ AppContext for global state management
+7. ✅ AppContext for global state management (with highlighting support)
 8. ✅ Custom hooks (useGraphData, useUpload, useTimelinePlayback)
-9. ✅ 3-column layout (Narrative Log placeholder | Graph + Timeline | Insights placeholder)
+9. ✅ 3-column layout (Chat Log | Graph + Timeline | Insights placeholder)
 10. ✅ Full backend integration via API
+
+**Phase 3: Advanced Visualization** ✅ **COMPLETE** (Based on `dev_docs/graph_visual_design.md`)
+1. ✅ **Rich Card Nodes** (`AgentNode.tsx`) - Rectangular cards with icons, names, status pills, agent color coding
+2. ✅ **Ghost Trail Edges** (`GhostEdge.tsx`) - Temporal opacity (Current: 100%, Recent: 60%, History: 20%)
+3. ✅ **Gantt-Style Timeline** (`TimelineControls.tsx`) - Agent tracks with colored activity blocks, click-to-navigate
+4. ✅ **Chat Log with Cross-Highlighting** (`ChatLog.tsx`) - Displays full messages, hover highlights agents, expandable messages
+5. ✅ **Interactive Message Cards** - Expandable for long messages (max-height with scroll), double-click to jump and highlight
+6. ✅ **Bidirectional Edge Handling** - Offset edges to prevent overlap (A→B and B→A show separately)
+7. ✅ **Agent Color Palette** - Consistent colors across all components (8-color palette)
+8. ✅ **MiniMap** - Overview of graph with agent colors
+9. ✅ **Configurable Ports** - Frontend port via PORT env var, CORS supports multiple ports
 
 **What's Working End-to-End**:
 - ✅ Upload JSONL/JSON log files through UI
-- ✅ Backend parses and builds temporal graph
-- ✅ Frontend displays graph with React Flow (automatic layout)
-- ✅ Timeline scrubber filters graph by step (queries backend with `?step=N`)
+- ✅ Backend parses and builds temporal graph with full message content
+- ✅ Rich Card nodes with role-based icons and status indicators
+- ✅ Ghost Trail edges with temporal fade (animated dashed flow for current step)
+- ✅ Gantt timeline with agent tracks - hover highlights agent, click block navigates to step
+- ✅ Chat log with full messages - hover highlights sender, single-click navigates, double-click jumps and highlights
+- ✅ Expandable message cards (>80 chars show "Show more" button, max 256px height with scroll)
+- ✅ Cross-highlighting between all components (Chat Log ↔ Graph ↔ Timeline)
 - ✅ Play/pause animation through conversation steps
-- ✅ Edge labels show interaction counts
 - ✅ Loading states and error handling
 - ✅ Type-safe communication between frontend and backend
 
 **What's Tested**:
 - Backend: 19 passing tests (parsers, graph builder, API endpoints)
-- Frontend: Manual testing complete (upload → graph → timeline)
+- Frontend: Manual testing complete (upload → graph → timeline → interactions)
 
-**Phase 3: Advanced Features** 📋 **NEXT**
+**Phase 4: Polish & Advanced Features** 📋 **NEXT**
 1. Resizable panels (react-resizable-panels)
-2. NarrativeLog panel - Message list with auto-scroll to current step
-3. InsightEngine panel - Display metrics from `/api/graph/{id}/metrics`
-4. Custom React Flow node styles - Agent avatars, colors from metadata
-5. Keyboard shortcuts (Space = play/pause, arrows = step navigation)
-6. LLM abstraction service integration
-7. Anomaly detection UI (loops, stagnation markers)
-8. Thought Stream for user annotations
+2. InsightEngine panel - Display metrics from `/api/graph/{id}/metrics`
+3. Keyboard shortcuts (Space = play/pause, arrows = step navigation)
+4. LLM abstraction service integration
+5. Anomaly detection UI (loops, stagnation markers)
+6. WebSocket for real-time updates
+7. Report generation modal
+8. Export graph as PNG/SVG
+9. Dark mode support
 
-**Phase 4: Polish** 📋 **PLANNED**
-1. WebSocket for real-time updates
-2. Report generation modal
-3. Export graph as PNG/SVG
-4. Dark mode support
-5. Docker Compose setup
-6. CI/CD pipeline (GitHub Actions)
-7. Production build and deployment
+**Phase 5: Deployment** 📋 **PLANNED**
+1. Docker Compose setup
+2. CI/CD pipeline (GitHub Actions)
+3. Production build and deployment
+4. Performance optimization (code splitting)
 
 ## Important Notes for Future Development
 
@@ -538,8 +551,16 @@ const { data: graphData } = useQuery({
 ### Cross-Cutting Concerns
 
 1. **API Contract**: Keep `backend/app/schemas/` and `frontend/src/types/` in sync. Consider using OpenAPI code generation tools.
-2. **CORS Configuration**: Ensure FastAPI allows requests from Vite dev server (localhost:5173) in development. Backend runs on port 8001 (8000 reserved for vllm).
+2. **CORS Configuration**: Backend allows multiple frontend ports via `.env`:
+   ```
+   CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:3000
+   ```
+   Backend runs on port 8001 (8000 reserved for vllm).
 3. **Environment Variables**:
-   - Backend: Use `.env` for API keys (OpenAI, Anthropic), loaded via Pydantic Settings
-   - Frontend: Use `.env.local` for `VITE_API_BASE_URL=http://localhost:8001`
+   - Backend: Use `.env` for API keys (OpenAI, Anthropic), CORS origins, loaded via Pydantic Settings
+   - Frontend: Use `.env` for:
+     - `VITE_API_BASE_URL=http://localhost:8001` (backend API URL)
+     - `PORT=5173` (dev server port, optional, defaults to 5173)
 4. **Documentation**: Update OpenAPI descriptions in FastAPI route decorators - they auto-generate the /docs page
+5. **Visualization Design**: Follow `dev_docs/graph_visual_design.md` for UI/UX guidelines
+6. **User Interactions**: See `dev_docs/USER_INTERACTIONS.md` for complete interaction reference

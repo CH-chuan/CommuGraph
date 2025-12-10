@@ -124,7 +124,8 @@ class GraphBuilder:
             message_id=message.step_index,
             metadata={
                 'message_type': message.message_type.value,
-                'content_preview': message.content[:100] if message.content else ''
+                'content': message.content if message.content else '',  # Store full content
+                'content_preview': message.content[:100] if message.content else ''  # Keep preview for compatibility
             }
         )
 
