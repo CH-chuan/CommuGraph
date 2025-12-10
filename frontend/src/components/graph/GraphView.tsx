@@ -8,7 +8,7 @@
  */
 
 import { useMemo, useState, useCallback, useEffect } from 'react';
-import { ReactFlow, Background, Controls, MiniMap, type Node } from '@xyflow/react';
+import { ReactFlow, Background, Controls, type Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useAppContext } from '@/context/AppContext';
 import { useGraphData } from '@/hooks/useGraphData';
@@ -126,11 +126,6 @@ export function GraphView() {
       >
         <Background gap={16} size={1} color="#e2e8f0" />
         <Controls showInteractive={false} />
-        <MiniMap
-          nodeColor={(node) => (node.data as { color?: string }).color || '#64748b'}
-          maskColor="rgba(255, 255, 255, 0.8)"
-          className="!bg-slate-50 !border-slate-200"
-        />
       </ReactFlow>
     </div>
   );

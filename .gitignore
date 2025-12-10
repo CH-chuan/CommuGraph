@@ -161,6 +161,8 @@ figures/
 exports/
 visualizations/
 *.html
+# not for index.html
+!frontend/index.html
 *.png
 *.svg
 # *.pdf
