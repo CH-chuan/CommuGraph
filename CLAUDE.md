@@ -477,26 +477,31 @@ const { data: graphData } = useQuery({
 10. ✅ Full backend integration via API
 
 **Phase 3: Advanced Visualization** ✅ **COMPLETE** (Based on `dev_docs/graph_visual_design.md`)
-1. ✅ **Rich Card Nodes** (`AgentNode.tsx`) - Rectangular cards with icons, names, status pills, agent color coding
-2. ✅ **Ghost Trail Edges** (`GhostEdge.tsx`) - Temporal opacity (Current: 100%, Recent: 60%, History: 20%)
-3. ✅ **Gantt-Style Timeline** (`TimelineControls.tsx`) - Agent tracks with colored activity blocks, click-to-navigate
-4. ✅ **Chat Log with Cross-Highlighting** (`ChatLog.tsx`) - Displays full messages, hover highlights agents, expandable messages
-5. ✅ **Interactive Message Cards** - Expandable for long messages (max-height with scroll), double-click to jump and highlight
-6. ✅ **Bidirectional Edge Handling** - Offset edges to prevent overlap (A→B and B→A show separately)
-7. ✅ **Agent Color Palette** - Consistent colors across all components (8-color palette)
-8. ✅ **MiniMap** - Overview of graph with agent colors
-9. ✅ **Configurable Ports** - Frontend port via PORT env var, CORS supports multiple ports
+1. ✅ **Rich Card Nodes** (`AgentNode.tsx`) - Rectangular cards with role-based icons, names, status pills (idle/generating/waiting/tool_use), agent color coding, tool drawer for active tools
+2. ✅ **Ghost Trail Edges** (`GhostEdge.tsx`) - Smart edge routing with temporal states:
+   - Current (t): 100% opacity, 5px, Orange (#f97316), dashed flow animation
+   - Recent (t-1): 100% opacity, 4px, Source Color (agent-specific)
+   - History (t-n): 40% opacity, 2px, Slate (#94a3b8)
+3. ✅ **Gantt-Style Timeline** (`TimelineControls.tsx`) - Agent tracks with colored activity blocks, click-to-navigate to step, hover highlights agent, collapsible panel
+4. ✅ **Chat Log with Cross-Highlighting** (`ChatLog.tsx`) - Displays full messages with sender→receiver, hover highlights agents and step, auto-scroll to current step
+5. ✅ **Interactive Message Cards** - Expandable for long messages (>80 chars, line-clamp-2 with max-h-64 scroll), double-click to jump and highlight sender, single-click to navigate
+6. ✅ **Bidirectional Edge Handling** - Smart handle routing with multiple connection points (left/right/top/bottom handles) to prevent overlap, offset edges for A→B and B→A
+7. ✅ **Agent Color Palette** - Consistent 8-color palette across nodes, edges, timeline, and chat log
+8. ✅ **Edge Focus Mode** (`GraphView.tsx`) - Double-click node to highlight its outgoing edges, single-click to clear focus
+9. ✅ **Configurable Ports** - Frontend port via PORT env var (defaults to 5173), CORS supports multiple frontend ports (5173, 3000)
 
 **What's Working End-to-End**:
 - ✅ Upload JSONL/JSON log files through UI
 - ✅ Backend parses and builds temporal graph with full message content
-- ✅ Rich Card nodes with role-based icons and status indicators
-- ✅ Ghost Trail edges with temporal fade (animated dashed flow for current step)
-- ✅ Gantt timeline with agent tracks - hover highlights agent, click block navigates to step
-- ✅ Chat log with full messages - hover highlights sender, single-click navigates, double-click jumps and highlights
-- ✅ Expandable message cards (>80 chars show "Show more" button, max 256px height with scroll)
+- ✅ Rich Card nodes with role-based icons, status indicators, and agent color-coded borders
+- ✅ Ghost Trail edges with temporal states (Current: Orange 5px dashed, Recent: Agent Color 4px, History: Slate 2px 40% opacity)
+- ✅ Smart edge routing with bidirectional support and multiple connection handles
+- ✅ Gantt timeline with agent tracks - hover highlights agent, click block navigates to step, collapsible panel
+- ✅ Chat log with full messages - hover highlights sender and step, single-click navigates, double-click jumps and highlights sender
+- ✅ Expandable message cards (>80 chars show "Show more" button with line-clamp, max-h-64 with scroll)
+- ✅ Edge focus mode - double-click node to highlight outgoing edges, single-click to clear
 - ✅ Cross-highlighting between all components (Chat Log ↔ Graph ↔ Timeline)
-- ✅ Play/pause animation through conversation steps
+- ✅ Play/pause animation through conversation steps (1 step/second)
 - ✅ Loading states and error handling
 - ✅ Type-safe communication between frontend and backend
 
