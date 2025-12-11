@@ -1,6 +1,6 @@
 # CommuGraph User Interactions Reference
 
-**Last Updated**: 2025-12-10
+**Last Updated**: 2025-12-11
 
 This document describes all supported user interactions in the CommuGraph visualization interface.
 
@@ -8,11 +8,50 @@ This document describes all supported user interactions in the CommuGraph visual
 
 ## Table of Contents
 
-1. [Graph View (Center Panel)](#graph-view-center-panel)
-2. [Chat Log (Left Panel)](#chat-log-left-panel)
-3. [Timeline Controls (Bottom)](#timeline-controls-bottom)
-4. [Gantt Chart Timeline](#gantt-chart-timeline)
-5. [Cross-Component Synchronization](#cross-component-synchronization)
+1. [File Upload](#file-upload)
+2. [Graph View (Center Panel)](#graph-view-center-panel)
+3. [Claude Code Workflow View](#claude-code-workflow-view)
+4. [Chat Log (Left Panel)](#chat-log-left-panel)
+5. [Timeline Controls (Bottom)](#timeline-controls-bottom)
+6. [Gantt Chart Timeline](#gantt-chart-timeline)
+7. [Cross-Component Synchronization](#cross-component-synchronization)
+
+---
+
+## File Upload
+
+### PreFlight Modal
+
+The upload modal appears automatically on first load and supports two frameworks.
+
+**Framework Selection:**
+- **AutoGen**: Single file upload (`.jsonl` or `.json`)
+- **Claude Code**: Multi-file upload (main session + sub-agent logs)
+
+### AutoGen Upload
+
+| Action | Behavior |
+|--------|----------|
+| **Select file** | Choose a single `.jsonl` or `.json` file |
+| **Process & Launch** | Parses file and opens agent graph view |
+
+### Claude Code Upload (Multi-File)
+
+| Action | Behavior |
+|--------|----------|
+| **Select framework** | Choose "Claude Code" from dropdown |
+| **Select files** | File picker allows multiple selection |
+| **File detection** | Main session file (UUID format) auto-detected, agent-*.jsonl files marked as sub-agents |
+| **Remove file** | Click X button to remove individual files |
+| **Process & Launch** | Merges all files and opens workflow view |
+
+**Visual Indicators:**
+- **Main session file**: Blue background with "main" badge
+- **Sub-agent files**: Purple background with "sub-agent" badge
+
+**File Limits:**
+- Max 10MB per file
+- Max 50MB total
 
 ---
 
@@ -97,6 +136,148 @@ This document describes all supported user interactions in the CommuGraph visual
 - Zoom Out (-)
 - Fit View (center all nodes)
 - Lock/Unlock pan
+
+---
+
+## Claude Code Workflow View
+
+When a Claude Code log is uploaded, CommuGraph displays a specialized **Workflow View** instead of the standard agent graph. This view is optimized for visualizing the sequential, agent-centric execution pattern of Claude Code.
+
+### Layout Overview
+
+```
+┌───────────┬─────────────────────────────────┬──────────────┐
+│   Chat    │         Workflow Graph          │   Metrics    │
+│   Log     │  (Time Axis + Lanes + Nodes)    │  Dashboard   │
+│           │                                 │              │
+└───────────┴─────────────────────────────────┴──────────────┘
+```
+
+### Time Axis (Left Edge)
+
+**Visual Elements:**
+- Vertical time ruler showing elapsed time from session start
+- Tick marks at regular intervals (format: `0s`, `1:30`, `5:00`)
+- Blue horizontal line indicating current step
+- Blue dot indicator at current position
+
+**Interactions:**
+
+| Action | Behavior |
+|--------|----------|
+| **Click tick** | Jump to the node closest to that timestamp |
+| **Visual only** | Current step indicator updates with navigation |
+
+---
+
+### Lane Headers (Top)
+
+**Visual Elements:**
+- One lane per agent (main agent + sub-agents)
+- **Main agent lane**: Blue background with User icon
+- **Sub-agent lanes**: Purple background with Bot icon
+- Lane metadata: tokens, duration, tool count, status badge
+
+**Lane Status Badges:**
+- **completed**: Green badge
+- **failed**: Red badge
+
+---
+
+### Workflow Nodes
+
+Nodes represent discrete activities in the Claude Code session.
+
+**Node Types:**
+
+| Type | Color | Icon | Description |
+|------|-------|------|-------------|
+| **User Input** | Blue (#3B82F6) | User | User's prompt or follow-up |
+| **Tool Result** | Teal (#14B8A6) | Terminal | Result from tool execution |
+| **System Notice** | Slate (#64748B) | Info | System messages |
+| **Agent Reasoning** | Purple (#8B5CF6) | Brain | LLM thinking/response |
+| **Tool Call** | Green (#10B981) | Wrench | Tool invocation |
+| **Result Success** | Emerald (#22C55E) | Check | Successful operation (compact) |
+| **Result Failure** | Red (#EF4444) | X | Failed operation (compact) |
+
+**Node Content:**
+- Label (truncated)
+- Content preview (2 lines max)
+- Tool name badge (for tool calls)
+- Duration badge (when available)
+- Token count (input/output)
+
+**Interactions:**
+
+| Action | Behavior |
+|--------|----------|
+| **Hover** | Highlights node, shows step in timeline |
+| **Click** | Sets current step, highlights in chat log |
+
+**Visual States:**
+- **Current/Highlighted**: Blue ring, elevated shadow
+- **Normal**: Standard shadow
+
+---
+
+### Workflow Edges
+
+Edges connect sequential activities within the workflow.
+
+**Visual Elements:**
+- Animated edges connecting nodes top-to-bottom
+- Duration-based coloring:
+  - **Fast (<1s)**: Green (#22C55E)
+  - **Normal (1-5s)**: Yellow (#EAB308)
+  - **Slow (5-30s)**: Orange (#F97316)
+  - **Very slow (>30s)**: Red (#EF4444)
+- Arrow markers indicating direction
+- Cross-lane edges (dashed) for sub-agent spawning
+
+**Edge States:**
+- **Current step**: 3px width, bright color
+- **Historical**: 2px width, muted color
+
+---
+
+### Metrics Dashboard (Right Panel)
+
+Displays session-level analytics for Claude Code logs.
+
+**Summary Cards:**
+- **Duration**: Total session time
+- **Tokens**: Total input/output tokens (formatted: 1.2k, 3.5M)
+- **Tool Calls**: Number of tool invocations
+- **Success Rate**: Tool success percentage (color-coded)
+
+**Collapsible Sections:**
+
+| Section | Content |
+|---------|---------|
+| **Activity Breakdown** | Bar chart of node types |
+| **Tool Usage** | Top 10 tools by frequency |
+| **Sub-agents** | List of spawned sub-agents with metadata |
+
+**Sub-agent Cards:**
+- Sub-agent type/ID
+- Status badge (completed/failed)
+- Duration, tokens, tool count
+
+**Warning Banner:**
+- Appears when tool success rate < 90%
+- Amber background with alert icon
+
+---
+
+### Workflow-Specific Interactions
+
+| Action | Effect |
+|--------|--------|
+| **Node click** | Updates current step, scrolls chat log |
+| **Node hover** | Temporarily highlights step across views |
+| **Time axis click** | Jumps to nearest timestamp |
+| **Pan/Zoom** | Standard React Flow controls |
+| **Fit View** | Centers all workflow nodes |
 
 ---
 

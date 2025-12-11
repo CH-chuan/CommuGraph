@@ -11,6 +11,7 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
 import { useAppContext } from '@/context/app-context';
 import { useGraphData } from '@/hooks/use-graph-data';
+import { useWorkflowData } from '@/hooks/use-workflow-data';
 import { getAgentColor } from '@/utils/graph-adapters';
 import { MessageSquare, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -25,31 +26,71 @@ interface ChatMessage {
 export function ChatLog() {
   const {
     graphId,
+    framework,
     currentStep,
     setCurrentStep,
     setHighlightedAgentId,
     setHighlightedStepIndex,
     highlightedStepIndex,
   } = useAppContext();
-  const { data, isLoading } = useGraphData(graphId, undefined);
+
+  const isClaudeCode = framework === 'claudecode';
+
+  // Use different data sources based on framework
+  const { data: graphData, isLoading: graphLoading } = useGraphData(
+    isClaudeCode ? null : graphId, // Skip for Claude Code
+    undefined
+  );
+  const { data: workflowData, isLoading: workflowLoading } = useWorkflowData(
+    isClaudeCode ? graphId : null // Only fetch for Claude Code
+  );
+
+  const isLoading = isClaudeCode ? workflowLoading : graphLoading;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const currentMessageRef = useRef<HTMLDivElement>(null);
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
     null
   );
 
-  // Extract messages from graph edges
+  // Extract messages based on framework
   const { messages, agentColors } = useMemo(() => {
-    if (!data?.graph) return { messages: [], agentColors: new Map() };
+    // For Claude Code, extract from workflow nodes
+    if (isClaudeCode && workflowData?.workflow) {
+      const workflow = workflowData.workflow;
 
-    const agentIds = data.graph.nodes.map((n) => n.id);
+      // Build colors from lanes
+      const laneIds = workflow.lanes.map((l) => l.id);
+      const colors = new Map(
+        laneIds.map((id) => [id, getAgentColor(id, laneIds)])
+      );
+
+      // Extract messages from workflow nodes
+      const allMessages: ChatMessage[] = workflow.nodes.map((node) => ({
+        stepIndex: node.stepIndex,
+        sender: node.laneId === 'main' ? 'Main Agent' : node.laneId,
+        receiver: null, // Workflow nodes don't have explicit receivers
+        content: node.content || node.contentPreview || node.label,
+        timestamp: node.timestamp,
+      }));
+
+      // Sort by step index
+      allMessages.sort((a, b) => a.stepIndex - b.stepIndex);
+
+      return { messages: allMessages, agentColors: colors };
+    }
+
+    // For AutoGen and others, extract from graph edges
+    if (!graphData?.graph) return { messages: [], agentColors: new Map() };
+
+    const agentIds = graphData.graph.nodes.map((n) => n.id);
     const colors = new Map(
       agentIds.map((id) => [id, getAgentColor(id, agentIds)])
     );
 
     // Build message list from edges with interaction metadata
     const allMessages: ChatMessage[] = [];
-    data.graph.edges.forEach((edge) => {
+    graphData.graph.edges.forEach((edge) => {
       edge.interactions.forEach((interaction) => {
         // Use full content if available, fall back to preview, then default message
         const metadata = interaction.metadata || {};
@@ -73,7 +114,7 @@ export function ChatLog() {
     allMessages.sort((a, b) => a.stepIndex - b.stepIndex);
 
     return { messages: allMessages, agentColors: colors };
-  }, [data]);
+  }, [isClaudeCode, workflowData, graphData]);
 
   // Auto-scroll to current step
   useEffect(() => {

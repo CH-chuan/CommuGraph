@@ -6,11 +6,13 @@
 
 import { BaseParser, ParserError } from '@/lib/parsers/base-parser';
 import { AutoGenParser } from '@/lib/parsers/autogen-parser';
+import { ClaudeCodeParser } from '@/lib/parsers/claude-code-parser';
 import type { Message } from '@/lib/models/types';
 
 // Parser registry - maps framework names to parser classes
 const PARSER_REGISTRY: Record<string, new () => BaseParser> = {
   autogen: AutoGenParser,
+  claudecode: ClaudeCodeParser,
 };
 
 /**
@@ -41,20 +43,27 @@ export function parseLog(content: string, framework: string): Message[] {
 
 /**
  * Detect the framework from log content (basic heuristic).
- * Currently defaults to 'autogen'.
  *
  * @param content - Raw log file content
  * @returns Detected framework name
  */
 export function detectFramework(content: string): string {
-  // For now, default to autogen
-  // Future: Add heuristics based on content structure
+  // Check for Claude Code patterns
+  // Claude Code logs have sessionId, parentUuid, and specific type values
+  if (
+    content.includes('"sessionId"') &&
+    content.includes('"parentUuid"') &&
+    (content.includes('"isSidechain"') || content.includes('"requestId"'))
+  ) {
+    return 'claudecode';
+  }
 
   // Check for CrewAI patterns (future)
   // if (content.includes('"crew"') || content.includes('CrewAI')) {
   //   return 'crewai';
   // }
 
+  // Default to autogen
   return 'autogen';
 }
 

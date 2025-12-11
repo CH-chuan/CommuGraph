@@ -3,6 +3,7 @@
  */
 
 import type { GraphSnapshot } from './graph';
+import type { WorkflowGraphSnapshot } from '@/lib/models/types';
 
 export interface UploadResponse {
   graph_id: string;
@@ -15,6 +16,10 @@ export interface UploadResponse {
 
 export interface GraphResponse {
   graph: GraphSnapshot;
+}
+
+export interface WorkflowResponse {
+  workflow: WorkflowGraphSnapshot;
 }
 
 export interface MetricsResponse {

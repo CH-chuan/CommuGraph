@@ -5,7 +5,7 @@
  * Note: Sessions are cleared on server restart (acceptable for dev/demo).
  */
 
-import type { Message } from '@/lib/models/types';
+import type { Message, WorkflowGraphSnapshot } from '@/lib/models/types';
 import type { GraphBuilder } from './graph-builder';
 
 export interface Session {
@@ -16,6 +16,8 @@ export interface Session {
   createdAt: Date;
   lastAccessed: Date;
   metadata: Record<string, unknown>;
+  // Workflow graph for Claude Code logs
+  workflowGraph?: WorkflowGraphSnapshot;
 }
 
 export interface SessionInfo {
@@ -52,12 +54,14 @@ function generateSessionId(): string {
  * @param messages - Parsed message list
  * @param framework - Framework name used for parsing
  * @param graphBuilder - GraphBuilder instance with built graph
+ * @param workflowGraph - Optional workflow graph for Claude Code logs
  * @returns Session ID
  */
 export function createSession(
   messages: Message[],
   framework: string,
-  graphBuilder: GraphBuilder
+  graphBuilder: GraphBuilder,
+  workflowGraph?: WorkflowGraphSnapshot
 ): string {
   // Generate unique session ID
   let sessionId = generateSessionId();
@@ -75,6 +79,7 @@ export function createSession(
     createdAt: now,
     lastAccessed: now,
     metadata: {},
+    workflowGraph,
   };
 
   sessions.set(sessionId, session);
@@ -113,6 +118,17 @@ export function getSession(sessionId: string): Session | null {
 export function getGraphBuilder(sessionId: string): GraphBuilder | null {
   const session = getSession(sessionId);
   return session?.graphBuilder ?? null;
+}
+
+/**
+ * Get the workflow graph for a session (Claude Code logs only).
+ *
+ * @param sessionId - Session ID
+ * @returns WorkflowGraphSnapshot or null if not found/not Claude Code
+ */
+export function getWorkflowGraph(sessionId: string): WorkflowGraphSnapshot | null {
+  const session = getSession(sessionId);
+  return session?.workflowGraph ?? null;
 }
 
 /**

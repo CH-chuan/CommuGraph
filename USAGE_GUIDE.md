@@ -1,7 +1,7 @@
 # CommuGraph Usage Guide & Test Plan
 
 **Version**: Next.js 15 Unified Stack
-**Last Updated**: December 2025
+**Last Updated**: December 11, 2025
 **Status**: Full-Stack TypeScript Implementation
 
 ---
@@ -78,30 +78,50 @@ Open browser to `http://localhost:3000`.
 
 The **PreFlight Modal** appears automatically on first load.
 
-**Option A: Upload Your Own File**
+**Option A: Upload AutoGen Log (Single File)**
 
-1. **Select a Log File**:
+1. **Choose Framework**: Select "AutoGen" from dropdown
+2. **Select a Log File**:
    - Click file input or drag-and-drop
    - Supported formats: `.json`, `.jsonl`
    - File should contain AutoGen conversation logs
+3. **Process & Launch**: Click button to parse and visualize
 
-2. **Choose Framework**:
-   - Select "AutoGen" from dropdown
+**Option B: Upload Claude Code Log (Multi-File)**
 
-3. **Process & Launch**:
-   - Click "Process & Launch" button
-   - Processing typically takes 1-2 seconds
+Claude Code sessions consist of multiple JSONL files:
+- Main session file (UUID format, e.g., `a1b2c3d4-xxxx.jsonl`)
+- Sub-agent files (e.g., `agent-explore-xyz.jsonl`, `agent-plan-abc.jsonl`)
 
-**Option B: Load Sample Data (Quick Test)**
+1. **Choose Framework**: Select "Claude Code" from dropdown
+2. **Select Files**:
+   - Click file input (multi-select enabled)
+   - Select ALL `.jsonl` files from the session folder
+   - The main session file is automatically detected (UUID format)
+   - Sub-agent files (starting with `agent-`) are identified
+3. **Review Selection**:
+   - Files are listed with color-coded badges
+   - Blue "main" badge for main session
+   - Purple "sub-agent" badge for agent files
+   - Click X to remove unwanted files
+4. **Process & Launch**: Click button to parse and visualize
+
+**What if you only upload the main file?**
+- The workflow will still display
+- You'll see sub-agent Task spawns and their results
+- You'll miss the internal activity within sub-agents (their reasoning, tool calls)
+
+**Option C: Load Sample Data (Quick Test)**
 
 1. Click **"Load Sample Data (34 messages)"** button
-2. Automatically loads a pre-built multi-agent scenario
+2. Automatically loads a pre-built AutoGen multi-agent scenario
 3. Perfect for testing and demos
 
 #### Step 3: Explore the Dashboard
 
-The dashboard has a **3-column layout**:
+The dashboard layout varies by framework:
 
+**AutoGen Layout (3-column):**
 ```
 ┌─────────────┬──────────────────────┬─────────────┐
 │   Chat      │        Graph         │  Insights   │
@@ -110,15 +130,27 @@ The dashboard has a **3-column layout**:
 └─────────────┴──────────────────────┴─────────────┘
 ```
 
+**Claude Code Layout (3-panel):**
+```
+┌─────────────┬─────────────────────────────────────┐
+│   Chat      │   Workflow View   │    Metrics      │
+│    Log      │ (DAG + Lanes)     │   Dashboard     │
+└─────────────┴─────────────────────────────────────┘
+```
+
 **Features**:
 
 - **Left Panel (Chat Log)**: Message history with cross-highlighting
-- **Center Panel**: Interactive graph + timeline controls
-- **Right Panel**: Insights placeholder (metrics coming soon)
+- **Center Panel**:
+  - AutoGen: Interactive agent graph + timeline controls
+  - Claude Code: Vertical workflow DAG with swim lanes
+- **Right Panel**:
+  - AutoGen: Insights placeholder
+  - Claude Code: Metrics dashboard with activity breakdown
 
-#### Step 4: Analyze the Graph
+#### Step 4: Analyze the Visualization
 
-**Graph Visualization Features**:
+**AutoGen: Graph Visualization Features**
 
 1. **Nodes (Agents)**:
    - Rich cards with role-based icons
@@ -137,6 +169,35 @@ The dashboard has a **3-column layout**:
    - **Pan**: Click and drag canvas
    - **Double-click node**: Focus on its outgoing edges
    - **Single-click node**: Clear focus
+
+**Claude Code: Workflow View Features**
+
+1. **Swim Lanes**:
+   - Main agent lane (blue header)
+   - Sub-agent lanes (purple headers)
+   - Lanes show: tokens, duration, tool count
+
+2. **Workflow Nodes** (type-colored):
+   - **User Input** (blue): User prompts
+   - **Agent Reasoning** (purple): LLM responses
+   - **Tool Call** (green): Tool invocations
+   - **Success/Failure** (emerald/red): Results
+
+3. **Edges** (duration-colored):
+   - Fast (<1s): Green
+   - Normal (1-5s): Yellow
+   - Slow (5-30s): Orange
+   - Very slow (>30s): Red
+
+4. **Time Axis** (left):
+   - Click timestamps to jump to nearest node
+   - Blue indicator shows current position
+
+5. **Metrics Dashboard** (right):
+   - Session summary cards
+   - Activity breakdown chart
+   - Tool usage statistics
+   - Sub-agent list with status
 
 #### Step 5: Navigate Through Time
 
@@ -227,15 +288,38 @@ npm run build
 - [ ] Graph appears in center panel
 - [ ] Timeline controls visible
 
-#### Test 2.3: Custom File Upload
-1. Select a `.jsonl` file
-2. Click "Process & Launch"
+#### Test 2.3: AutoGen File Upload
+1. Select "AutoGen" framework
+2. Select a single `.jsonl` file
+3. Click "Process & Launch"
 
 - [ ] File name shown after selection
 - [ ] Upload succeeds
 - [ ] Graph renders correctly
 
-#### Test 2.4: Error Handling
+#### Test 2.4: Claude Code Multi-File Upload
+1. Select "Claude Code" framework
+2. Select multiple `.jsonl` files (main + agent-*.jsonl)
+
+- [ ] File picker allows multi-select
+- [ ] Files listed with badges (main vs sub-agent)
+- [ ] Main session file shows blue "main" badge
+- [ ] Agent files show purple "sub-agent" badge
+- [ ] Can remove individual files with X button
+- [ ] Upload succeeds
+- [ ] Workflow view renders (not standard graph)
+- [ ] Metrics dashboard appears on right
+
+#### Test 2.5: Claude Code Single File (Main Only)
+1. Select "Claude Code" framework
+2. Select only the main session file
+
+- [ ] Upload succeeds
+- [ ] Workflow view renders
+- [ ] Sub-agent spawns visible (from Task tool calls)
+- [ ] Sub-agent lanes may be empty (no internal activity)
+
+#### Test 2.6: Error Handling
 1. Upload invalid file (e.g., text file renamed to .jsonl)
 
 - [ ] Error message appears in modal
@@ -244,7 +328,7 @@ npm run build
 
 ---
 
-### Test Suite 3: Graph Visualization
+### Test Suite 3: Graph Visualization (AutoGen)
 
 #### Test 3.1: Initial Render
 - [ ] Nodes (agent cards) visible
@@ -264,7 +348,49 @@ npm run build
 
 ---
 
-### Test Suite 4: Timeline Controls
+### Test Suite 3B: Claude Code Workflow View
+
+#### Test 3B.1: Initial Render
+- [ ] Workflow nodes visible (vertical DAG)
+- [ ] Lane headers at top (main + sub-agents)
+- [ ] Time axis on left
+- [ ] Metrics dashboard on right
+
+#### Test 3B.2: Node Types
+- [ ] User input nodes (blue)
+- [ ] Agent reasoning nodes (purple)
+- [ ] Tool call nodes (green)
+- [ ] Success/failure nodes (emerald/red)
+- [ ] Compact result nodes vs full nodes
+
+#### Test 3B.3: Edges
+- [ ] Duration-colored edges visible
+- [ ] Fast edges green, slow edges red
+- [ ] Animated current step edge
+
+#### Test 3B.4: Lanes
+- [ ] Main lane shows blue header
+- [ ] Sub-agent lanes show purple headers
+- [ ] Lane metadata visible (tokens, duration)
+
+#### Test 3B.5: Metrics Dashboard
+- [ ] Duration card shows session time
+- [ ] Tokens card shows formatted count
+- [ ] Tool calls count visible
+- [ ] Success rate percentage with color
+- [ ] Activity breakdown collapsible
+- [ ] Tool usage list visible
+- [ ] Sub-agent list (if any)
+
+#### Test 3B.6: Interactions
+- [ ] Click node updates step
+- [ ] Hover node highlights
+- [ ] Click time axis jumps to node
+- [ ] Zoom and pan work
+
+---
+
+### Test Suite 4: Timeline Controls (AutoGen)
 
 #### Test 4.1: Initial State
 - [ ] Controls visible at bottom
@@ -326,7 +452,7 @@ npm run build
 ```bash
 curl http://localhost:3000/api/frameworks
 ```
-- [ ] Returns `{"frameworks":["autogen"]}`
+- [ ] Returns `{"frameworks":["autogen","claudecode"]}`
 
 #### Test 6.2: Sessions
 ```bash
@@ -334,26 +460,47 @@ curl http://localhost:3000/api/sessions
 ```
 - [ ] Returns `{"sessions":[...]}`
 
-#### Test 6.3: Upload
+#### Test 6.3: AutoGen Upload
 ```bash
 curl -X POST -F "file=@public/mock_chat_history.jsonl" -F "framework=autogen" http://localhost:3000/api/upload
 ```
 - [ ] Returns JSON with `graph_id`, `node_count`, `edge_count`, `total_steps`
 
-#### Test 6.4: Graph Retrieval
+#### Test 6.4: Claude Code Multi-File Upload
+```bash
+curl -X POST -F "file=@main.jsonl" -F "file=@agent-explore.jsonl" -F "framework=claudecode" http://localhost:3000/api/upload
+```
+- [ ] Returns JSON with `graph_id`, `message_count`, `total_steps`
+- [ ] Accepts multiple files
+
+#### Test 6.5: Graph Retrieval
 ```bash
 curl "http://localhost:3000/api/graph/{graph_id}"
 ```
 - [ ] Returns graph snapshot with nodes and edges
 
-#### Test 6.5: Graph Filtering
+#### Test 6.6: Graph Filtering
 ```bash
 curl "http://localhost:3000/api/graph/{graph_id}?step=10"
 ```
 - [ ] Returns filtered graph
 - [ ] Only interactions ≤ step 10 included
 
-#### Test 6.6: Metrics
+#### Test 6.7: Workflow Retrieval (Claude Code)
+```bash
+curl "http://localhost:3000/api/graph/{graph_id}/workflow"
+```
+- [ ] Returns workflow snapshot with nodes, edges, lanes
+- [ ] Returns 400 if not a Claude Code session
+
+#### Test 6.8: Workflow Filtering (Claude Code)
+```bash
+curl "http://localhost:3000/api/graph/{graph_id}/workflow?step=10"
+```
+- [ ] Returns filtered workflow
+- [ ] Only nodes ≤ step 10 included
+
+#### Test 6.9: Metrics
 ```bash
 curl "http://localhost:3000/api/graph/{graph_id}/metrics"
 ```
@@ -421,7 +568,7 @@ npm run build
 
 ## Sample Data
 
-### Built-in Mock Data
+### Built-in Mock Data (AutoGen)
 
 **File**: `public/mock_chat_history.jsonl`
 
@@ -444,13 +591,42 @@ Each line is a JSON object:
 {"sender": "Manager", "recipient": "Coder", "message": "Implement the feature", "timestamp": "2024-01-15T10:30:00Z"}
 ```
 
+### Claude Code Log Format
+
+Claude Code logs are stored in `~/.claude/projects/[project-hash]/` with multiple files:
+
+**Main session file** (UUID format):
+```
+a1b2c3d4-5678-9abc-def0-123456789abc.jsonl
+```
+
+**Sub-agent files** (agent-* prefix):
+```
+agent-explore-xyz123.jsonl
+agent-plan-abc456.jsonl
+```
+
+Each line is a JSON record with structure like:
+```json
+{
+  "uuid": "unique-id",
+  "parentUuid": "parent-id",
+  "sessionId": "session-id",
+  "timestamp": "2025-01-15T10:30:00Z",
+  "type": "assistant",
+  "message": { "role": "assistant", "content": [...] }
+}
+```
+
 ### Creating Custom Test Data
 
-**Minimal Valid Log**:
+**AutoGen Minimal Log**:
 ```jsonl
 {"sender": "Alice", "recipient": "Bob", "message": "Hello Bob"}
 {"sender": "Bob", "recipient": "Alice", "message": "Hi Alice"}
 ```
+
+**Claude Code**: Export logs from `~/.claude/projects/` directory
 
 ---
 
@@ -464,13 +640,21 @@ Each line is a JSON object:
 | 1 | Installation | ☐ | |
 | 1 | Dev Server | ☐ | |
 | 1 | Prod Build | ☐ | |
-| 2 | Initial Load | ☐ | |
-| 2 | Sample Data | ☐ | |
-| 2 | File Upload | ☐ | |
-| 2 | Error Handling | ☐ | |
-| 3 | Graph Render | ☐ | |
+| 2.1 | Initial Load | ☐ | |
+| 2.2 | Sample Data | ☐ | |
+| 2.3 | AutoGen Upload | ☐ | |
+| 2.4 | Claude Code Multi-File | ☐ | |
+| 2.5 | Claude Code Single File | ☐ | |
+| 2.6 | Error Handling | ☐ | |
+| 3 | AutoGen Graph Render | ☐ | |
 | 3 | Node Interaction | ☐ | |
 | 3 | Zoom/Pan | ☐ | |
+| 3B | Workflow Render | ☐ | |
+| 3B | Node Types | ☐ | |
+| 3B | Edges | ☐ | |
+| 3B | Lanes | ☐ | |
+| 3B | Metrics Dashboard | ☐ | |
+| 3B | Workflow Interactions | ☐ | |
 | 4 | Timeline State | ☐ | |
 | 4 | Scrubbing | ☐ | |
 | 4 | Play Animation | ☐ | |
@@ -478,10 +662,12 @@ Each line is a JSON object:
 | 4 | Gantt Timeline | ☐ | |
 | 5 | Chat Log Display | ☐ | |
 | 5 | Chat Interaction | ☐ | |
-| 6 | API Endpoints | ☐ | |
+| 6 | API - Frameworks | ☐ | |
+| 6 | API - Upload | ☐ | |
+| 6 | API - Workflow | ☐ | |
 | 7 | Performance | ☐ | |
 
-**Total**: ___ / 19 tests passed
+**Total**: ___ / 29 tests passed
 
 ---
 
@@ -489,6 +675,7 @@ Each line is a JSON object:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.1 | Dec 11, 2025 | Claude Code parser and workflow view, multi-file upload support |
 | 2.0 | Dec 2025 | Next.js 15 unified stack migration |
 | 1.0 | Dec 2025 | Initial React + FastAPI implementation |
 

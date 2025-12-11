@@ -7,19 +7,27 @@
 import type {
   UploadResponse,
   GraphResponse,
+  WorkflowResponse,
   MetricsResponse,
   FrameworkListResponse,
 } from '@/types/api';
 
 /**
- * Upload a log file and create a new graph session.
+ * Upload log file(s) and create a new graph session.
+ *
+ * For Claude Code: supports multiple files (main session + agent-*.jsonl)
+ * For other frameworks: single file upload
  */
-export async function uploadLogFile(
-  file: File,
+export async function uploadLogFiles(
+  files: File[],
   framework: string
 ): Promise<UploadResponse> {
   const formData = new FormData();
-  formData.append('file', file);
+
+  // Append all files
+  for (const file of files) {
+    formData.append('file', file);
+  }
   formData.append('framework', framework);
 
   const response = await fetch('/api/upload', {
@@ -33,6 +41,16 @@ export async function uploadLogFile(
   }
 
   return response.json();
+}
+
+/**
+ * @deprecated Use uploadLogFiles instead
+ */
+export async function uploadLogFile(
+  file: File,
+  framework: string
+): Promise<UploadResponse> {
+  return uploadLogFiles([file], framework);
 }
 
 /**
@@ -53,6 +71,30 @@ export async function getGraph(
     const error = await response.json().catch(() => ({}));
     throw new Error(
       error.message || `Failed to fetch graph: ${response.statusText}`
+    );
+  }
+
+  return response.json();
+}
+
+/**
+ * Get workflow graph for a Claude Code session.
+ */
+export async function getWorkflow(
+  graphId: string,
+  step?: number
+): Promise<WorkflowResponse> {
+  const url =
+    step !== undefined
+      ? `/api/graph/${graphId}/workflow?step=${step}`
+      : `/api/graph/${graphId}/workflow`;
+
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      error.message || `Failed to fetch workflow: ${response.statusText}`
     );
   }
 

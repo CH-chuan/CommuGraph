@@ -196,3 +196,168 @@ export interface EdgeMetadata {
   interactions: Interaction[];
   weight: number;
 }
+
+// ============================================================================
+// Workflow Types (for Claude Code process mining)
+// ============================================================================
+
+/** Workflow node type classification */
+export const WorkflowNodeType = {
+  // User-originated
+  USER_INPUT: 'user_input',
+  TOOL_RESULT: 'tool_result',
+  SYSTEM_NOTICE: 'system_notice',
+
+  // Agent-originated
+  AGENT_REASONING: 'agent_reasoning',
+  TOOL_CALL: 'tool_call',
+
+  // Results
+  RESULT_SUCCESS: 'result_success',
+  RESULT_FAILURE: 'result_failure',
+} as const;
+
+export type WorkflowNodeType = (typeof WorkflowNodeType)[keyof typeof WorkflowNodeType];
+
+/** Sub-agent metadata for collapsed card view */
+export interface SubAgentInfo {
+  agentId: string;
+  subagentType: string;
+  prompt: string;
+  promptPreview: string; // First 100 chars
+  totalDurationMs: number;
+  totalTokens: number;
+  totalToolCalls: number;
+  status: 'completed' | 'failed';
+}
+
+/** Session metadata for start node */
+export interface SessionMetadata {
+  agentLabel: string;
+  totalDuration: string;
+  totalTokens: number;
+  nodeCount: number;
+}
+
+/** Workflow node for process mining visualization */
+export interface WorkflowNode {
+  id: string;
+  stepIndex: number;
+  timestamp: string;
+  nodeType: WorkflowNodeType;
+
+  // Content
+  label: string;
+  content: string;
+  contentPreview: string; // First 100 chars
+
+  // Context
+  laneId: string; // 'main' or 'agent-{id}'
+  isSidechain: boolean;
+  agentId?: string;
+
+  // Tool-specific
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  toolUseId?: string;
+
+  // Tool result enhancements
+  toolResultPreview?: string; // First 200 chars of result
+  toolResultStatus?: 'success' | 'failure';
+  toolResultStdout?: string; // For Bash results
+  toolResultStderr?: string; // For errors
+
+  // Sub-agent container fields
+  isSubAgentContainer?: boolean; // True for Task tool calls with sub-agents
+  isSubAgentCard?: boolean; // True for interactive sub-agent card nodes
+  subAgentInfo?: SubAgentInfo;
+
+  // Parallel execution tracking
+  parallelGroupId?: string; // Groups parallel tool calls (requestId)
+  parallelIndex?: number; // Position in parallel group (0, 1, 2...)
+  parallelCount?: number; // Total in parallel group
+
+  // Session start node (replaces lane header)
+  isSessionStart?: boolean;
+  sessionMetadata?: SessionMetadata;
+
+  // Metrics
+  inputTokens?: number;
+  outputTokens?: number;
+  durationMs?: number;
+
+  // Linking
+  uuid: string;
+  parentUuid: string | null;
+  logicalParentUuid?: string | null; // Used for context compaction continuity
+  requestId?: string;
+
+  // For fork/join tracking
+  parentNodeIds: string[]; // Nodes that lead to this one
+  childNodeIds: string[];  // Nodes that follow this one
+}
+
+/** Duration classification for edge coloring */
+export const DurationClass = {
+  FAST: 'fast',       // < 500ms (green)
+  MEDIUM: 'medium',   // 500ms - 2s (yellow)
+  SLOW: 'slow',       // 2s - 5s (orange)
+  VERY_SLOW: 'very_slow', // > 5s (red)
+} as const;
+
+export type DurationClass = (typeof DurationClass)[keyof typeof DurationClass];
+
+/** Workflow edge connecting nodes */
+export interface WorkflowEdge {
+  id: string;
+  source: string; // Source node ID
+  target: string; // Target node ID
+
+  // Timing
+  durationMs: number;
+  durationClass: DurationClass;
+
+  // Context
+  isParallel: boolean; // Part of fork pattern
+  isCrossLane: boolean; // Connects different lanes (main <-> sub-agent)
+
+  // Sequence
+  stepIndex: number;
+}
+
+/** Lane (swim lane) for visualization */
+export interface WorkflowLane {
+  id: string; // 'main' or 'agent-{id}'
+  label: string;
+  agentId?: string;
+
+  // Sub-agent metadata
+  subagentType?: string;
+  prompt?: string;
+  totalDurationMs?: number;
+  totalTokens?: number;
+  totalToolUseCount?: number;
+  status?: 'completed' | 'failed';
+}
+
+/** Complete workflow graph for visualization */
+export interface WorkflowGraphSnapshot {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  lanes: WorkflowLane[];
+
+  // Metadata
+  sessionId: string;
+  currentStep: number | null;
+  totalSteps: number;
+
+  // Time range
+  startTime: string;
+  endTime: string;
+  totalDurationMs: number;
+
+  // Metrics
+  totalTokens: number;
+  totalToolCalls: number;
+  toolSuccessRate: number;
+}

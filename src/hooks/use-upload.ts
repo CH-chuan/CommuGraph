@@ -2,14 +2,16 @@
 
 /**
  * Upload Hook - TanStack Query mutation for file upload
+ *
+ * Supports both single file (AutoGen) and multiple files (Claude Code)
  */
 
 import { useMutation } from '@tanstack/react-query';
-import { uploadLogFile } from '@/utils/api-client';
+import { uploadLogFiles } from '@/utils/api-client';
 
 export const useUpload = () => {
   return useMutation({
-    mutationFn: ({ file, framework }: { file: File; framework: string }) =>
-      uploadLogFile(file, framework),
+    mutationFn: ({ files, framework }: { files: File[]; framework: string }) =>
+      uploadLogFiles(files, framework),
   });
 };
