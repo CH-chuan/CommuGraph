@@ -1,61 +1,48 @@
-# figma prototype for reference only
+# ================================
+#  Archived Code (Migration Backup)
+# ================================
+backend.bak/
+frontend.bak/
+
+# Figma prototype for reference only
 figma_prototype/
+
+# Environment variables
 .env
-
-# ================================
-#  Python General
-# ================================
-__pycache__/
-*.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Byte-compiled / optimized / DLL files
-*.pyd
-*.pyo
-*.pdb
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 
 # ================================
-#  Environment & Dependency Tools
+#  Next.js
 # ================================
-# Virtual environments
-venv/
-.env/
-.venv/
-env/
-ENV/
-
-# Poetry / Hatch / PDM
-.poetry/
-.pdm-*
-.hatch/
-
-# Pip cache
-pip-wheel-metadata/
-pip-wheel-cache/
-wheels/
-
-# Conda
-conda-meta/
-*.conda
-*.lock
+.next/
+out/
+build/
+.swc/
 
 
 # ================================
-#  Project-Specific: Streamlit App
+#  Node.js / npm
 # ================================
-.streamlit/
-**/.streamlit/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# Streamlit cached data and temp files
-.streamlit-cache/
-streamlit_cache/
-streamlit_logs/
-**/streamlit_cache/
-**/.streamlit_cache/
+# Package manager locks (keep package-lock.json)
+yarn.lock
+pnpm-lock.yaml
+
+
+# ================================
+#  TypeScript
+# ================================
+*.tsbuildinfo
+next-env.d.ts
 
 
 # ================================
@@ -66,50 +53,18 @@ streamlit_logs/
 *.out
 *.err
 *.pid
-
-# Jupyter notebook checkpoints
-.ipynb_checkpoints/
-
-# Temporary analysis output
-*.csv.tmp
-*.jsonl.tmp
 temp/
 tmp/
 
 
 # ================================
-#  Build, Distribution, Packaging
+#  Testing & Coverage
 # ================================
-# Build artifacts
-/build/
-/dist/
-/sdist/
-/develop-eggs/
-/.eggs/
-*.egg
-*.egg-info/
-*.egg-info
-
-# PyInstaller
-*.spec
-
-# Installer logs
-pip-log.txt
-
-# Setup backups
-setup.cfg.bak
-setup.py.bak
-
-
-# ================================
-#  Testing
-# ================================
+coverage/
 .coverage
 coverage.xml
 htmlcov/
-.tox/
-.nox/
-.pytest_cache/
+.nyc_output/
 
 
 # ================================
@@ -126,9 +81,8 @@ examples/logs/
 *.pickle
 *.pkl
 
-# If you want to keep sample logs, whitelist:
-#!data/sample_logs.jsonl
-!frontend/public/mock_chat_history.jsonl
+# Whitelist sample data for testing
+!public/mock_chat_history.jsonl
 
 
 # ================================
@@ -138,7 +92,7 @@ examples/logs/
 .vscode/
 *.code-workspace
 
-# PyCharm / IntelliJ
+# JetBrains IDEs (WebStorm, etc.)
 .idea/
 
 # Sublime Text
@@ -156,31 +110,24 @@ Thumbs.db
 # ================================
 #  Visualization Outputs
 # ================================
-# Matplotlib, Plotly, PyVis export outputs
 figures/
 exports/
 visualizations/
-*.html
-# not for index.html
-!frontend/index.html
 *.png
 *.svg
-# *.pdf
 
 
 # ================================
 #  Cache
 # ================================
 .cache/
-.pyre/
-.pytype/
-mypy_cache/
-__pypackages__/
-*.pyre/
+*.cache
 
-# HuggingFace cache (if used)
-huggingface/
-hf_cache/
-.hf_cache/
+# Vercel
+.vercel
 
+# Turbo
+.turbo
+
+# Claude Code
 .specstory/
