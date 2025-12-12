@@ -77,6 +77,17 @@ export class AnnotationPreprocessor {
   parseFile(filePath: string): void {
     const content = fs.readFileSync(filePath, 'utf-8');
     this.rawFile = path.basename(filePath);
+    this.parseContent(content);
+  }
+
+  /**
+   * Parse JSONL content string into records with line numbers.
+   * Use this for in-memory parsing without file access.
+   */
+  parseContent(content: string, filename?: string): void {
+    if (filename) {
+      this.rawFile = filename;
+    }
     this.records = [];
 
     const lines = content.split('\n');
@@ -331,26 +342,13 @@ export class AnnotationPreprocessor {
 
     // 2. Generate assistant_turn records
     for (const [, turn] of turns) {
-      // Build combined text content
-      const textParts: string[] = [];
-      if (turn.thinkingBlocks.length > 0) {
-        textParts.push('[THINKING]\n' + turn.thinkingBlocks.join('\n\n'));
-      }
-      if (turn.textBlocks.length > 0) {
-        textParts.push('[TEXT]\n' + turn.textBlocks.join('\n\n'));
-      }
-
-      // Add tool call descriptions
-      if (turn.toolUseBlocks.length > 0) {
-        const toolDescs = turn.toolUseBlocks.map(t => {
-          const inputStr = JSON.stringify(t.input, null, 2);
-          return `[TOOL_USE: ${t.name}]\n${inputStr}`;
-        });
-        textParts.push(toolDescs.join('\n\n'));
-      }
+      // Build structured text_or_artifact_ref
+      const hasThinking = turn.thinkingBlocks.length > 0;
+      const hasText = turn.textBlocks.length > 0;
+      const hasTools = turn.toolUseBlocks.length > 0;
 
       // Skip turns with no content
-      if (textParts.length === 0) continue;
+      if (!hasThinking && !hasText && !hasTools) continue;
 
       const source: SourcePointers = {
         raw_file: this.rawFile,
@@ -362,11 +360,32 @@ export class AnnotationPreprocessor {
       };
 
       // Add tool_use_ids if present
-      if (turn.toolUseBlocks.length > 0) {
+      if (hasTools) {
         source.tool_use_ids = turn.toolUseBlocks.map(t => t.id);
       }
 
       const toolSummary = this.buildToolSummary(turn, toolResultsIndex);
+
+      // Build structured text_or_artifact_ref
+      const textOrArtifactRef: {
+        thinking?: string;
+        text?: string;
+        tool_calls?: { tool_use_id: string; tool_name: string; input: Record<string, unknown> }[];
+      } = {};
+
+      if (hasThinking) {
+        textOrArtifactRef.thinking = turn.thinkingBlocks.join('\n\n');
+      }
+      if (hasText) {
+        textOrArtifactRef.text = turn.textBlocks.join('\n\n');
+      }
+      if (hasTools) {
+        textOrArtifactRef.tool_calls = turn.toolUseBlocks.map(t => ({
+          tool_use_id: t.id,
+          tool_name: t.name,
+          input: t.input,
+        }));
+      }
 
       const record: AnnotationRecord = {
         session_id: this.sessionId,
@@ -377,9 +396,7 @@ export class AnnotationPreprocessor {
         unit_type: 'assistant_turn',
         source,
         timestamp: turn.timestamp,
-        text_or_artifact_ref: {
-          text: textParts.join('\n\n'),
-        },
+        text_or_artifact_ref: textOrArtifactRef,
         labels: [],
       };
 

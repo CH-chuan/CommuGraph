@@ -110,10 +110,21 @@ export interface SourcePointers {
 // Text/Artifact Reference
 // ============================================================================
 
+/** Tool call reference for structured text_or_artifact_ref */
+export interface ToolCallRef {
+  tool_use_id: string;
+  tool_name: string;
+  input: Record<string, unknown>;
+}
+
 export interface TextOrArtifactRef {
-  /** The actual text content */
+  /** Thinking content from assistant (for assistant_turn) */
+  thinking?: string;
+  /** Text response from assistant OR user prompt text (for user_turn) */
   text?: string;
-  /** Tool call ID reference */
+  /** Tool calls made in this turn (for assistant_turn) */
+  tool_calls?: ToolCallRef[];
+  /** Tool call ID reference (legacy compatibility) */
   tool_call_id?: string;
   /** Path to artifact (e.g., file written) */
   artifact_path?: string;

@@ -17,6 +17,8 @@ export interface UploadResponse {
   sub_agents_loaded?: number;
   /** Agent IDs for which no file was found (for Claude Code) */
   sub_agents_missing?: string[];
+  /** Number of annotation records generated (for Claude Code) */
+  annotation_count?: number;
 }
 
 export interface GraphResponse {
@@ -25,6 +27,13 @@ export interface GraphResponse {
 
 export interface WorkflowResponse {
   workflow: WorkflowGraphSnapshot;
+}
+
+export interface AnnotationsResponse {
+  annotations: import('@/lib/annotation/types').AnnotationRecord[];
+  total: number;
+  user_turn_count: number;
+  assistant_turn_count: number;
 }
 
 export interface MetricsResponse {

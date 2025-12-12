@@ -71,6 +71,7 @@ export function ChatLog() {
   const {
     graphId,
     framework,
+    viewMode,
     currentStep,
     setCurrentStep,
     highlightedStepIndex,
@@ -82,6 +83,7 @@ export function ChatLog() {
   } = useAppContext();
 
   const isClaudeCode = framework === 'claudecode';
+  const isAnnotationView = isClaudeCode && viewMode === 'annotation';
 
   // Use different data sources based on framework
   const { data: graphData, isLoading: graphLoading } = useGraphData(
@@ -361,7 +363,8 @@ export function ChatLog() {
               // Use effectiveStepIndex for Claude Code (maps main agent step to actual stepIndex)
               const isCurrent = msg.stepIndex === effectiveStepIndex;
               const isHighlighted = msg.stepIndex === highlightedStepIndex;
-              const isPast = msg.stepIndex <= effectiveStepIndex;
+              // In annotation view, show all messages without opacity filtering
+              const isPast = isAnnotationView ? true : msg.stepIndex <= effectiveStepIndex;
 
               // Get nodeType colors for Claude Code messages
               const typeColors = msg.nodeType ? nodeTypeColors[msg.nodeType] : null;

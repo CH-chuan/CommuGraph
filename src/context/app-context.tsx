@@ -9,11 +9,15 @@
 
 import { createContext, useContext, useState, type ReactNode } from 'react';
 
+export type ViewMode = 'workflow' | 'annotation';
+
 interface AppContextType {
   graphId: string | null;
   setGraphId: (id: string | null) => void;
   framework: string | null;
   setFramework: (framework: string | null) => void;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
   currentStep: number;
   setCurrentStep: (step: number | ((prev: number) => number)) => void;
   totalSteps: number;
@@ -39,6 +43,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [graphId, setGraphId] = useState<string | null>(null);
   const [framework, setFramework] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('workflow');
   const [currentStep, setCurrentStep] = useState(0);
   const [totalSteps, setTotalSteps] = useState(0);
   const [mainAgentStepCount, setMainAgentStepCount] = useState(0);
@@ -60,6 +65,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setGraphId,
         framework,
         setFramework,
+        viewMode,
+        setViewMode,
         currentStep,
         setCurrentStep,
         totalSteps,

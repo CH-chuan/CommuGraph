@@ -8,6 +8,7 @@ import type {
   UploadResponse,
   GraphResponse,
   WorkflowResponse,
+  AnnotationsResponse,
   MetricsResponse,
   FrameworkListResponse,
 } from '@/types/api';
@@ -105,6 +106,24 @@ export async function getWorkflow(
     const error = await response.json().catch(() => ({}));
     throw new Error(
       error.message || `Failed to fetch workflow: ${response.statusText}`
+    );
+  }
+
+  return response.json();
+}
+
+/**
+ * Get annotation records for a Claude Code session.
+ */
+export async function getAnnotations(
+  graphId: string
+): Promise<AnnotationsResponse> {
+  const response = await fetch(`/api/graph/${graphId}/annotations`);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      error.message || `Failed to fetch annotations: ${response.statusText}`
     );
   }
 

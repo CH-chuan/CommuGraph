@@ -24,6 +24,8 @@ import { ClaudeCodeParser } from '@/lib/parsers/claude-code-parser';
 import { WorkflowGraphBuilder } from '@/lib/services/workflow-graph-builder';
 import { loadSubAgentFiles, isValidSubAgentDirectory } from '@/lib/services/sub-agent-loader';
 import { isSubAgentFile } from '@/lib/parsers/agent-id-extractor';
+import { AnnotationPreprocessor } from '@/lib/annotation/preprocessor';
+import type { AnnotationRecord } from '@/lib/annotation/types';
 import type { UploadResponse, ErrorResponse, WorkflowGraphSnapshot } from '@/lib/models/types';
 
 // Default sub-agent directory for development
@@ -86,6 +88,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
     // Parse the log file(s)
     let messages;
     let workflowGraph: WorkflowGraphSnapshot | undefined;
+    let annotationRecords: AnnotationRecord[] | undefined;
     let subAgentsLoaded = 0;
     let subAgentsMissing: string[] = [];
 
@@ -158,6 +161,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
         // Build the workflow graph
         const workflowBuilder = new WorkflowGraphBuilder();
         workflowGraph = workflowBuilder.build(parseResult);
+
+        // Generate annotation records using the preprocessor
+        const annotationPreprocessor = new AnnotationPreprocessor();
+        annotationPreprocessor.parseContent(mainContent, mainFilename);
+        annotationRecords = annotationPreprocessor.generateAnnotationRecords();
+        console.log(`[Upload] Generated ${annotationRecords.length} annotation records`);
       } else {
         // Single file parsing for other frameworks
         const content = await files[0].text();
@@ -181,8 +190,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
     const graphBuilder = new GraphBuilder();
     graphBuilder.buildGraph(messages);
 
-    // Create session (with optional workflow graph for Claude Code)
-    const sessionId = createSession(messages, framework, graphBuilder, workflowGraph);
+    // Create session (with optional workflow graph and annotation records for Claude Code)
+    const sessionId = createSession(messages, framework, graphBuilder, workflowGraph, annotationRecords);
 
     // Get graph info
     const graph = graphBuilder.getGraph();
@@ -211,6 +220,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
       // Sub-agent loading info (for Claude Code)
       sub_agents_loaded: subAgentsLoaded > 0 ? subAgentsLoaded : undefined,
       sub_agents_missing: subAgentsMissing.length > 0 ? subAgentsMissing : undefined,
+      // Annotation records count (for Claude Code)
+      annotation_count: annotationRecords?.length,
     };
 
     return NextResponse.json(response);

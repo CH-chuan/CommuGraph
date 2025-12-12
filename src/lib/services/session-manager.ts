@@ -7,6 +7,7 @@
 
 import type { Message, WorkflowGraphSnapshot } from '@/lib/models/types';
 import type { GraphBuilder } from './graph-builder';
+import type { AnnotationRecord } from '@/lib/annotation/types';
 
 export interface Session {
   id: string;
@@ -18,6 +19,8 @@ export interface Session {
   metadata: Record<string, unknown>;
   // Workflow graph for Claude Code logs
   workflowGraph?: WorkflowGraphSnapshot;
+  // Annotation records for Claude Code logs (preprocessed for labeling)
+  annotationRecords?: AnnotationRecord[];
 }
 
 export interface SessionInfo {
@@ -55,13 +58,15 @@ function generateSessionId(): string {
  * @param framework - Framework name used for parsing
  * @param graphBuilder - GraphBuilder instance with built graph
  * @param workflowGraph - Optional workflow graph for Claude Code logs
+ * @param annotationRecords - Optional annotation records for Claude Code logs
  * @returns Session ID
  */
 export function createSession(
   messages: Message[],
   framework: string,
   graphBuilder: GraphBuilder,
-  workflowGraph?: WorkflowGraphSnapshot
+  workflowGraph?: WorkflowGraphSnapshot,
+  annotationRecords?: AnnotationRecord[]
 ): string {
   // Generate unique session ID
   let sessionId = generateSessionId();
@@ -80,6 +85,7 @@ export function createSession(
     lastAccessed: now,
     metadata: {},
     workflowGraph,
+    annotationRecords,
   };
 
   sessions.set(sessionId, session);
@@ -129,6 +135,17 @@ export function getGraphBuilder(sessionId: string): GraphBuilder | null {
 export function getWorkflowGraph(sessionId: string): WorkflowGraphSnapshot | null {
   const session = getSession(sessionId);
   return session?.workflowGraph ?? null;
+}
+
+/**
+ * Get the annotation records for a session (Claude Code logs only).
+ *
+ * @param sessionId - Session ID
+ * @returns AnnotationRecord array or null if not found/not Claude Code
+ */
+export function getAnnotationRecords(sessionId: string): AnnotationRecord[] | null {
+  const session = getSession(sessionId);
+  return session?.annotationRecords ?? null;
 }
 
 /**

@@ -145,6 +145,8 @@ export interface UploadResponse {
   sub_agents_loaded?: number;
   /** Agent IDs for which no file was found (for Claude Code) */
   sub_agents_missing?: string[];
+  /** Number of annotation records generated (for Claude Code) */
+  annotation_count?: number;
 }
 
 export interface GraphResponse {
