@@ -419,6 +419,29 @@ export class WorkflowGraphBuilder {
             toolCall.parallelCount = toolCallNodes.length;
           }
         }
+      } else if (toolCallNodes.length > 0) {
+        // No reasoning node (response had only tool_use, no thinking/text)
+        // Connect tool calls directly to parent via their parentUuid
+        const isParallel = toolCallNodes.length > 1;
+        for (const toolCall of toolCallNodes) {
+          processedNodes.add(toolCall.id);
+
+          // Use the tool call's own parentUuid to find the parent node
+          const effectiveParentUuid = toolCall.parentUuid || toolCall.logicalParentUuid;
+          if (effectiveParentUuid) {
+            const parentNode = nodeByUuid.get(effectiveParentUuid);
+            if (parentNode) {
+              this.createEdge(parentNode, toolCall, stepIndex++, isParallel);
+            }
+          }
+
+          // Mark parallel info on tool call nodes
+          if (isParallel) {
+            toolCall.parallelGroupId = requestId;
+            toolCall.parallelIndex = toolCallNodes.indexOf(toolCall);
+            toolCall.parallelCount = toolCallNodes.length;
+          }
+        }
       }
     }
 
