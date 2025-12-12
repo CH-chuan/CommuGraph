@@ -815,8 +815,11 @@ export class ClaudeCodeParser extends BaseParser {
         return `Task (${input.subagent_type || 'unknown'}): ${String(input.description || input.prompt || '').slice(0, 100)}`;
       case 'TodoWrite':
         return `TodoWrite: ${JSON.stringify(input.todos || []).slice(0, 100)}`;
-      case 'AskUserQuestion':
-        return `Ask user: ${String(input.question || input.prompt || '').slice(0, 100)}`;
+      case 'AskUserQuestion': {
+        const questions = input.questions as Array<{question: string}> | undefined;
+        const firstQ = questions?.[0]?.question || '';
+        return `Ask user: ${firstQ.slice(0, 100)}`;
+      }
       default:
         return `${name}: ${JSON.stringify(input).slice(0, 100)}`;
     }
