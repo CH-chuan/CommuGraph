@@ -38,6 +38,7 @@ import {
   getNodeColor,
   TREE_LAYOUT_CONFIG,
 } from '@/utils/workflow-layout';
+import { extractAgentIdFromLaneId } from '@/utils/agent-naming';
 
 // Extended node types including new components
 const extendedNodeTypes = {
@@ -74,6 +75,52 @@ function convertToReactFlow(
   const mainAgentNodes = nodes
     .filter(n => n.laneId === 'main' && !n.isSessionStart)
     .sort((a, b) => a.stepIndex - b.stepIndex);
+
+  // Build main agent step mapping (stepIndex -> sequential number, 1-indexed)
+  const mainAgentStepMap = new Map<number, number>();
+  mainAgentNodes.forEach((n, idx) => {
+    mainAgentStepMap.set(n.stepIndex, idx + 1);
+  });
+
+  // Build sub-agent step mapping per agent (agentId -> stepIndex -> sequential number)
+  const subAgentStepMaps = new Map<string, Map<number, number>>();
+
+  // Group sub-agent nodes by agentId
+  const subAgentNodesGrouped = new Map<string, WFNode[]>();
+  nodes.filter(n => n.laneId !== 'main' && !n.isSessionStart).forEach(n => {
+    const agentId = n.agentId || extractAgentIdFromLaneId(n.laneId) || n.laneId;
+    if (!subAgentNodesGrouped.has(agentId)) {
+      subAgentNodesGrouped.set(agentId, []);
+    }
+    subAgentNodesGrouped.get(agentId)!.push(n);
+  });
+
+  // Sort each agent's nodes by stepIndex and assign sequential numbers
+  for (const [agentId, agentNodes] of subAgentNodesGrouped) {
+    const sortedNodes = agentNodes.sort((a, b) => a.stepIndex - b.stepIndex);
+    const stepMap = new Map<number, number>();
+    sortedNodes.forEach((n, idx) => {
+      stepMap.set(n.stepIndex, idx + 1);
+    });
+    subAgentStepMaps.set(agentId, stepMap);
+  }
+
+  // Helper to get display step label for a node
+  const getDisplayStepLabel = (node: WFNode): string => {
+    if (node.isSessionStart) {
+      return ''; // No step label for session start
+    }
+    if (node.laneId === 'main') {
+      const mainStep = mainAgentStepMap.get(node.stepIndex);
+      return mainStep !== undefined ? `#${mainStep}` : `#${node.stepIndex}`;
+    }
+    // Sub-agent node
+    const agentId = node.agentId || extractAgentIdFromLaneId(node.laneId) || node.laneId;
+    const agentIdShort = agentId.substring(0, 4); // Use first 4 chars
+    const stepMap = subAgentStepMaps.get(agentId);
+    const seq = stepMap?.get(node.stepIndex) ?? node.stepIndex;
+    return `sub-${agentIdShort}-${seq}`;
+  };
 
   // Map main agent step number to actual stepIndex
   // currentStep now represents "show up to the Nth main agent node"
@@ -120,6 +167,7 @@ function convertToReactFlow(
       data: {
         id: node.id,
         stepIndex: node.stepIndex,
+        displayStepLabel: getDisplayStepLabel(node),
         nodeType: node.nodeType,
         label: node.label,
         contentPreview: node.contentPreview,

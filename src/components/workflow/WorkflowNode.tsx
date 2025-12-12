@@ -47,6 +47,7 @@ import { formatSubAgentName } from '@/utils/agent-naming';
 export interface WorkflowNodeData {
   id: string;
   stepIndex: number;
+  displayStepLabel?: string; // Formatted step label (e.g., "#1" or "sub-773d-1")
   nodeType: WorkflowNodeType;
   label: string;
   contentPreview: string;
@@ -229,7 +230,7 @@ function SubAgentToolCallComponent({ data, selected }: { data: WorkflowNodeData;
         <span className="text-sm font-semibold text-purple-700">
           call-sub-agent
         </span>
-        <span className="ml-auto text-xs text-slate-400">#{nodeData.stepIndex}</span>
+        <span className="ml-auto text-xs text-slate-400">{nodeData.displayStepLabel || `#${nodeData.stepIndex}`}</span>
       </div>
 
       {/* Sub-agent type with ID */}
@@ -351,7 +352,7 @@ function ResultNodeComponent({ data, selected }: { data: WorkflowNodeData; selec
 
       {/* Step indicator */}
       <div className="px-3 py-1.5 border-t border-slate-100 text-xs text-slate-400">
-        Step #{nodeData.stepIndex}
+        Step {nodeData.displayStepLabel || `#${nodeData.stepIndex}`}
       </div>
     </div>
   );
@@ -446,7 +447,7 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
         <span className={`text-sm font-semibold ${config.textColor} truncate`}>
           {nodeData.toolName || nodeData.label}
         </span>
-        <span className="ml-auto text-xs text-slate-400">#{nodeData.stepIndex}</span>
+        <span className="ml-auto text-xs text-slate-400">{nodeData.displayStepLabel || `#${nodeData.stepIndex}`}</span>
       </div>
 
       {/* Content Preview */}
@@ -472,9 +473,9 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
               {formatDuration(nodeData.durationMs)}
             </span>
           )}
-          {(nodeData.inputTokens || nodeData.outputTokens) && (
+          {nodeData.outputTokens && (
             <span>
-              {nodeData.inputTokens || 0}+{nodeData.outputTokens || 0} tok
+              {nodeData.outputTokens} output tokens
             </span>
           )}
         </div>

@@ -19,6 +19,7 @@ import type { WorkflowNodeType } from '@/lib/models/types';
 
 interface ChatMessage {
   stepIndex: number;
+  displayStepLabel: string; // Formatted step label (e.g., "#1" or "sub-773d-1")
   sender: string;
   receiver: string | null;
   content: string;
@@ -123,6 +124,50 @@ export function ChatLog() {
         .sort((a, b) => a.stepIndex - b.stepIndex);
       const stepIndices = mainNodes.map((n) => n.stepIndex);
 
+      // Build main agent step mapping (stepIndex -> sequential number, 1-indexed)
+      const mainAgentStepMap = new Map<number, number>();
+      mainNodes.forEach((n, idx) => {
+        mainAgentStepMap.set(n.stepIndex, idx + 1);
+      });
+
+      // Build sub-agent step mapping per agent (agentId -> stepIndex -> sequential number)
+      const subAgentStepMaps = new Map<string, Map<number, number>>();
+
+      // Group sub-agent nodes by agentId
+      const subAgentNodesGrouped = new Map<string, typeof workflow.nodes>();
+      workflow.nodes.filter(n => n.laneId !== 'main' && !n.isSessionStart).forEach(n => {
+        const agentId = n.agentId || extractAgentIdFromLaneId(n.laneId) || n.laneId;
+        if (!subAgentNodesGrouped.has(agentId)) {
+          subAgentNodesGrouped.set(agentId, []);
+        }
+        subAgentNodesGrouped.get(agentId)!.push(n);
+      });
+
+      // Sort each agent's nodes by stepIndex and assign sequential numbers
+      for (const [agentId, agentNodes] of subAgentNodesGrouped) {
+        const sortedNodes = agentNodes.sort((a, b) => a.stepIndex - b.stepIndex);
+        const stepMap = new Map<number, number>();
+        sortedNodes.forEach((n, idx) => {
+          stepMap.set(n.stepIndex, idx + 1);
+        });
+        subAgentStepMaps.set(agentId, stepMap);
+      }
+
+      // Helper to get display step label
+      const getDisplayStepLabel = (node: typeof workflow.nodes[0]): string => {
+        if (node.isSessionStart) return '';
+        if (node.laneId === 'main') {
+          const mainStep = mainAgentStepMap.get(node.stepIndex);
+          return mainStep !== undefined ? `#${mainStep}` : `#${node.stepIndex}`;
+        }
+        // Sub-agent node
+        const agentId = node.agentId || extractAgentIdFromLaneId(node.laneId) || node.laneId;
+        const agentIdShort = agentId.substring(0, 4);
+        const stepMap = subAgentStepMaps.get(agentId);
+        const seq = stepMap?.get(node.stepIndex) ?? node.stepIndex;
+        return `sub-${agentIdShort}-${seq}`;
+      };
+
       // Filter nodes based on showSubAgentMessages toggle
       const filteredNodes = showSubAgentMessages
         ? workflow.nodes
@@ -149,6 +194,7 @@ export function ChatLog() {
 
         return {
           stepIndex: node.stepIndex,
+          displayStepLabel: getDisplayStepLabel(node),
           sender: senderName,
           receiver: null, // Workflow nodes don't have explicit receivers
           content: node.content || node.contentPreview || node.label,
@@ -186,6 +232,7 @@ export function ChatLog() {
           `Message from ${edge.source} to ${edge.target}`;
         allMessages.push({
           stepIndex: interaction.step_index,
+          displayStepLabel: `#${interaction.step_index}`, // AutoGen uses raw step index
           sender: edge.source,
           receiver: edge.target,
           content: content,
@@ -366,7 +413,7 @@ export function ChatLog() {
                   {/* Header: Step + Sender -> Receiver (colored background) */}
                   <div className={`flex items-center gap-2 px-3 py-2 ${typeColors?.bg || (isCurrent ? 'bg-blue-50' : 'bg-slate-50')}`}>
                     <span className="text-xs font-mono text-slate-500 bg-white/60 px-1.5 py-0.5 rounded">
-                      #{msg.stepIndex}
+                      {msg.displayStepLabel}
                     </span>
                     <span
                       className={`text-sm font-semibold truncate ${typeColors?.text || ''}`}

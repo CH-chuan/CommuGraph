@@ -146,8 +146,8 @@ export function TimelineControls() {
         </button>
       </div>
 
-      {/* Gantt Chart Area */}
-      {isExpanded && agents.length > 0 && (
+      {/* Gantt Chart Area - Hidden for Claude Code (uses WorkflowTimelineControls instead) */}
+      {!isClaudeCode && isExpanded && agents.length > 0 && (
         <div className="relative overflow-hidden">
           {/* Current step indicator line */}
           <div
