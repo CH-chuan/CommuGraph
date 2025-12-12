@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'CommuGraph',
-  description: 'Process Mining for Multi-Agent Interactions',
+  description: 'Deep Analytics on Multi-Agent Chat Logs',
 };
 
 export default function RootLayout({

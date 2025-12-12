@@ -36,7 +36,8 @@ interface PreFlightModalProps {
 export function PreFlightModal({ open, onClose }: PreFlightModalProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [framework, setFramework] = useState('autogen');
-  const { setGraphId, setTotalSteps, setFramework: setAppFramework } = useAppContext();
+  const [subAgentDir, setSubAgentDir] = useState('');
+  const { setGraphId, setTotalSteps, setMainAgentStepCount, setFramework: setAppFramework } = useAppContext();
   const uploadMutation = useUpload();
 
   const isClaudeCode = framework === 'claudecode';
@@ -62,14 +63,28 @@ export function PreFlightModal({ open, onClose }: PreFlightModalProps) {
     if (files.length === 0) return;
 
     uploadMutation.mutate(
-      { files, framework },
+      {
+        files,
+        framework,
+        subAgentDirectory: isClaudeCode && subAgentDir ? subAgentDir : undefined,
+      },
       {
         onSuccess: (data) => {
           setGraphId(data.graph_id);
           setTotalSteps(data.total_steps);
+          setMainAgentStepCount(data.main_agent_steps);
           setAppFramework(data.framework);
           setFiles([]);
+          setSubAgentDir('');
           onClose();
+
+          // Log sub-agent loading results
+          if (data.sub_agents_loaded !== undefined) {
+            console.log(`[Upload] Loaded ${data.sub_agents_loaded} sub-agent files`);
+          }
+          if (data.sub_agents_missing && data.sub_agents_missing.length > 0) {
+            console.log(`[Upload] Missing sub-agent files: ${data.sub_agents_missing.join(', ')}`);
+          }
         },
       }
     );
@@ -110,6 +125,7 @@ export function PreFlightModal({ open, onClose }: PreFlightModalProps) {
           onSuccess: (data) => {
             setGraphId(data.graph_id);
             setTotalSteps(data.total_steps);
+            setMainAgentStepCount(data.main_agent_steps);
             setAppFramework(data.framework);
             onClose();
           },
@@ -169,11 +185,30 @@ export function PreFlightModal({ open, onClose }: PreFlightModalProps) {
             />
             {isClaudeCode && (
               <p className="text-xs text-muted-foreground">
-                Select all JSONL files from a Claude Code session folder.
-                The main session file and agent-*.jsonl files will be automatically detected.
+                Select the main session file. Sub-agent files will be auto-loaded
+                from the default directory or a custom path below.
               </p>
             )}
           </div>
+
+          {/* Sub-agent Directory (Claude Code only) */}
+          {isClaudeCode && (
+            <div className="space-y-2">
+              <Label htmlFor="subAgentDir">
+                Sub-agent Directory <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                id="subAgentDir"
+                type="text"
+                placeholder="public/samples/Users-harrywang-sandbox-paperfox"
+                value={subAgentDir}
+                onChange={(e) => setSubAgentDir(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Path to search for sub-agent files if not uploaded. Leave empty to use default.
+              </p>
+            </div>
+          )}
 
           {/* File List */}
           {sortedFiles.length > 0 && (

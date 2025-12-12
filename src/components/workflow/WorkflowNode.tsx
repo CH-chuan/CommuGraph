@@ -41,6 +41,7 @@ import {
   Zap,
 } from 'lucide-react';
 import type { WorkflowNodeType, SubAgentInfo, SessionMetadata } from '@/lib/models/types';
+import { formatSubAgentName } from '@/utils/agent-naming';
 
 // Node data interface with enhanced fields
 export interface WorkflowNodeData {
@@ -231,13 +232,13 @@ function SubAgentToolCallComponent({ data, selected }: { data: WorkflowNodeData;
         <span className="ml-auto text-xs text-slate-400">#{nodeData.stepIndex}</span>
       </div>
 
-      {/* Sub-agent type */}
+      {/* Sub-agent type with ID */}
       <div className="px-3 py-2 border-b border-purple-100">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Bot className="w-4 h-4 text-purple-500" />
             <span className="text-sm font-medium text-purple-700">
-              {subAgentInfo.subagentType || 'Agent'}
+              {formatSubAgentName(subAgentInfo.subagentType || 'Agent', subAgentInfo.agentId)}
             </span>
           </div>
           <button

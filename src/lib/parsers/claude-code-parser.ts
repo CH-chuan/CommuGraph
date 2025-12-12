@@ -289,6 +289,34 @@ export class ClaudeCodeParser extends BaseParser {
   }
 
   /**
+   * Parse main session file with lazily loaded sub-agent files.
+   *
+   * Use this when sub-agent files are loaded separately after extracting
+   * agentIds from the main session.
+   *
+   * @param mainContent - Content of the main session JSONL file
+   * @param mainFilename - Filename of the main session (for identification)
+   * @param subAgentFiles - Map of sub-agent files (filename -> content)
+   * @returns Parsed result with messages and sub-agent info
+   */
+  parseWithLazySubAgents(
+    mainContent: string,
+    mainFilename: string,
+    subAgentFiles: Map<string, string>
+  ): ClaudeCodeParseResult {
+    // Combine main file with sub-agent files
+    const allFiles = new Map<string, string>();
+    allFiles.set(mainFilename, mainContent);
+
+    for (const [filename, content] of subAgentFiles) {
+      allFiles.set(filename, content);
+    }
+
+    // Use existing multi-file parsing
+    return this.parseMultiFile(allFiles);
+  }
+
+  /**
    * Parse JSONL content into raw records.
    */
   private parseJsonl(content: string): RawLogRecord[] {
@@ -492,11 +520,16 @@ export class ClaudeCodeParser extends BaseParser {
     let stepIndex = startStepIndex;
 
     // Create reasoning node if there's thinking or text
+    // Combine thinking and text from the same request into one node
     if (response.thinking || response.text) {
-      const reasoningContent = [
-        response.thinking ? `[Thinking]\n${response.thinking}` : '',
-        response.text || '',
-      ].filter(Boolean).join('\n\n');
+      const contentParts: string[] = [];
+      if (response.thinking) {
+        contentParts.push(`[Thinking]\n${response.thinking}`);
+      }
+      if (response.text) {
+        contentParts.push(`[Response]\n${response.text}`);
+      }
+      const reasoningContent = contentParts.join('\n\n');
 
       messages.push({
         step_index: stepIndex++,
@@ -508,6 +541,8 @@ export class ClaudeCodeParser extends BaseParser {
         metadata: {
           model: response.model,
           requestId: response.requestId,
+          hasThinking: !!response.thinking,
+          hasText: !!response.text,
         },
 
         // Claude Code specific

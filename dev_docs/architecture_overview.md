@@ -4,6 +4,8 @@
 
 This document explains the CommuGraph codebase architecture for developers familiar with traditional split frontend/backend applications. CommuGraph is built with **Next.js 16**, a full-stack framework that unifies both frontend and backend in a single Node.js application.
 
+**CommuGraph** is a process mining and visualization tool for multi-agent systems. It parses logs from multi-agent frameworks (like AutoGen and Claude Code) and provides interactive visualizations to understand agent communication patterns and workflows.
+
 ## What is Next.js?
 
 Next.js is a React-based framework that runs on Node.js. Think of it as combining:
@@ -31,13 +33,16 @@ src/
 │   ├── api/               # 🔧 BACKEND: API endpoints
 │   ├── page.tsx           # 🎨 FRONTEND: Main page component
 │   ├── layout.tsx         # 🎨 FRONTEND: Root layout
-│   └── globals.css        # 🎨 FRONTEND: Global styles
+│   ├── globals.css        # 🎨 FRONTEND: Global styles
+│   └── favicon.ico        # 🎨 FRONTEND: App icon
 │
 ├── components/            # 🎨 FRONTEND: React components
 │   ├── graph/            # Graph visualization
 │   ├── workflow/         # Workflow timeline views
+│   ├── chat/             # Chat log display
 │   ├── layout/           # Header, layouts
-│   ├── ui/              # Reusable UI components
+│   ├── providers/        # React providers (React Query, etc.)
+│   ├── ui/              # Reusable UI components (shadcn/ui)
 │   └── upload/          # File upload modal
 │
 ├── hooks/                # 🎨 FRONTEND: React hooks
@@ -53,7 +58,8 @@ src/
 │   ├── parsers/         # Parse log files (AutoGen, Claude Code)
 │   ├── services/        # Core business logic
 │   ├── graph/           # Graph data structures
-│   └── models/          # Data models & types
+│   ├── models/          # Data models & types
+│   └── utils.ts         # Shared backend utilities
 │
 ├── types/               # 🔀 SHARED: TypeScript types
 │   ├── api.ts           # API request/response types
@@ -62,9 +68,23 @@ src/
 │
 └── utils/               # 🔀 SHARED: Utility functions
     ├── api-client.ts    # 🌉 BRIDGE: Frontend → Backend
+    ├── agent-naming.ts  # Agent name formatting utilities
     ├── graph-adapters.ts
     └── workflow-layout.ts
+
+public/                   # 🎨 FRONTEND: Static assets
+└── samples/             # Sample data files
 ```
+
+## Static Assets
+
+### Location: `public/`
+
+Static files that are served directly without processing. Accessible via root URL path.
+
+- **`public/samples/`**: Sample log files for demonstration and testing
+
+Next.js automatically serves files in `public/` at the root path. For example, `public/samples/data.json` is accessible at `/samples/data.json`.
 
 ## Frontend Components (Client-Side)
 
@@ -81,13 +101,33 @@ These files run in the **browser** and handle the user interface.
 
 #### 2. **Components** (`src/components/`)
 - **`components/graph/`**: Graph visualization (React Flow-based)
-  - `GraphView.tsx`, `AgentNode.tsx`, `GraphCanvas.tsx`
-- **`components/workflow/`**: Workflow timeline visualization
-  - `WorkflowView.tsx`, `WorkflowNode.tsx`, `TimeAxis.tsx`
+  - `GraphView.tsx`, `GraphViewWrapper.tsx` - Main graph view
+  - `GraphCanvas.tsx` - Canvas component for graph rendering
+  - `AgentNode.tsx` - Node component for agents
+  - `GhostEdge.tsx` - Edge visualization for ghost/preview states
+  - `TimelineControls.tsx` - Timeline playback controls
+- **`components/workflow/`**: Workflow timeline visualization (swimlane view)
+  - `WorkflowView.tsx`, `WorkflowViewWrapper.tsx` - Main workflow view
+  - `WorkflowNode.tsx` - Workflow event nodes
+  - `WorkflowEdge.tsx` - Workflow edges between nodes
+  - `SessionStartNode.tsx` - Special node for session start
+  - `LaneHeader.tsx` - Swimlane headers (agent names)
+  - `TimeAxis.tsx` - Time axis display
+  - `WorkflowTimelineControls.tsx` - Timeline controls for workflow
+  - `MetricsDashboard.tsx` - Metrics panel with statistics
+  - `SubAgentModal.tsx` - Modal for viewing sub-agent details
+  - `index.ts` - Barrel export file
+- **`components/chat/`**: Chat log display
+  - `ChatLog.tsx` - Display conversation logs
 - **`components/layout/`**: Layout components
-  - `Header.tsx`, `MainLayout.tsx`
+  - `Header.tsx` - Application header
+  - `MainLayout.tsx` - Main layout wrapper
+- **`components/providers/`**: React providers
+  - `Providers.tsx` - TanStack Query provider setup
 - **`components/ui/`**: Reusable UI components (shadcn/ui)
-  - Buttons, dialogs, inputs, sliders, etc.
+  - `button.tsx`, `dialog.tsx`, `input.tsx`, `label.tsx`, `select.tsx`, `slider.tsx`
+- **`components/upload/`**: File upload
+  - `PreFlightModal.tsx` - File upload and framework selection modal
 
 #### 3. **Hooks** (`src/hooks/`)
 Custom React hooks that fetch data from the backend:
@@ -99,12 +139,23 @@ Custom React hooks that fetch data from the backend:
 #### 4. **Context** (`src/context/app-context.tsx`)
 React Context for managing global application state (current graph ID, view mode, etc.)
 
-#### 5. **API Client Bridge** (`src/utils/api-client.ts`)
-The **bridge** between frontend and backend. Contains functions like:
-- `uploadLogFiles(files, framework)` → calls `/api/upload`
-- `getGraph(graphId, step)` → calls `/api/graph/${id}`
-- `getWorkflow(graphId, step)` → calls `/api/graph/${id}/workflow`
-- `getMetrics(graphId)` → calls `/api/graph/${id}/metrics`
+#### 5. **Utilities** (`src/utils/`)
+Shared utilities used by both frontend and backend:
+
+**API Client Bridge** (`api-client.ts`)
+- The **bridge** between frontend and backend
+- Contains functions like:
+  - `uploadLogFiles(files, framework)` → calls `/api/upload`
+  - `getGraph(graphId, step)` → calls `/api/graph/${id}`
+  - `getWorkflow(graphId, step)` → calls `/api/graph/${id}/workflow`
+  - `getMetrics(graphId)` → calls `/api/graph/${id}/metrics`
+  - `getFrameworks()` → calls `/api/frameworks`
+  - `deleteSession(sessionId)` → calls `/api/session/${id}`
+
+**Other Utilities**:
+- `agent-naming.ts`: Format and extract agent names (e.g., "Explore-773d7508")
+- `graph-adapters.ts`: Data transformation utilities for graph structures
+- `workflow-layout.ts`: Layout algorithms for workflow swimlane positioning
 
 ## Backend Components (Server-Side)
 
@@ -120,47 +171,71 @@ REST API endpoints (equivalent to Express.js routes):
 ```
 src/app/api/
 ├── upload/route.ts           → POST /api/upload
+│                                 Upload log files and create session
+│
 ├── sessions/route.ts         → GET /api/sessions
+│                                 List all active sessions
+│
 ├── frameworks/route.ts       → GET /api/frameworks
+│                                 Get available framework parsers
+│
 ├── graph/
 │   └── [id]/
-│       ├── route.ts         → GET /api/graph/{id}
-│       ├── workflow/route.ts → GET /api/graph/{id}/workflow
+│       ├── route.ts         → GET /api/graph/{id}?step={step}
+│       │                        Get graph data for a session
+│       │
+│       ├── workflow/route.ts → GET /api/graph/{id}/workflow?step={step}
+│       │                        Get workflow timeline data (swimlane view)
+│       │
 │       ├── metrics/route.ts  → GET /api/graph/{id}/metrics
+│       │                        Get graph metrics and statistics
+│       │
 │       └── info/route.ts    → GET /api/graph/{id}/info
+│                                Get session metadata
+│
 └── session/
     └── [id]/route.ts        → DELETE /api/session/{id}
+                                 Delete a session
 ```
 
 **File-based routing**: The file path determines the URL:
 - `api/upload/route.ts` → `/api/upload`
-- `api/graph/[id]/route.ts` → `/api/graph/:id` (dynamic route)
+- `api/graph/[id]/route.ts` → `/api/graph/:id` (dynamic route with parameter)
 
 **HTTP Methods**: Each route file exports functions like:
 - `export async function GET(request)` → Handle GET requests
 - `export async function POST(request)` → Handle POST requests
 - `export async function DELETE(request)` → Handle DELETE requests
 
+**Dynamic Routes**: Folder names in `[brackets]` are dynamic parameters:
+- `[id]` in the path becomes `params.id` in the handler
+
 #### 2. **Business Logic Layer** (`src/lib/`)
 
 ##### **Parsers** (`src/lib/parsers/`)
-Parse different multi-agent framework log formats:
-- `base-parser.ts`: Abstract parser interface
-- `autogen-parser.ts`: Parse AutoGen logs (JSONL)
+Parse different multi-agent framework log formats into a unified Message structure:
+- `base-parser.ts`: Abstract parser interface with error handling
+- `autogen-parser.ts`: Parse AutoGen framework logs (single JSONL file)
 - `claude-code-parser.ts`: Parse Claude Code logs (multi-file JSONL)
+  - Main session file + multiple agent-*.jsonl files
+  - Extracts sub-agent information and relationships
+  - Builds workflow graph with timing information
 
 ##### **Services** (`src/lib/services/`)
 Core business logic (equivalent to service layer in traditional backend):
-- `parser-service.ts`: Entry point for parsing logs
-- `graph-builder.ts`: Build graph structures from messages
-- `workflow-graph-builder.ts`: Build workflow timeline graphs
-- `session-manager.ts`: In-memory session storage (acts as "database")
+- `parser-service.ts`: Entry point for parsing logs, delegates to framework-specific parsers
+- `graph-builder.ts`: Build directed graph structures from parsed messages
+- `workflow-graph-builder.ts`: Build workflow timeline graphs (swimlane view data)
+- `session-manager.ts`: In-memory session storage (acts as "database"), manages active sessions
 
 ##### **Data Structures** (`src/lib/graph/`)
-- `digraph.ts`: Directed graph implementation (nodes, edges, algorithms)
+- `digraph.ts`: Directed graph implementation (nodes, edges, graph traversal algorithms)
 
 ##### **Models** (`src/lib/models/`)
-- `types.ts`: Core data models (Message, Agent, Session, WorkflowGraph, etc.)
+- `types.ts`: Core data models (Message, Agent, Session, WorkflowGraph, WorkflowNode, etc.)
+
+##### **Utilities** (`src/lib/`)
+- `utils.ts`: Shared utility functions for backend processing
 
 #### 3. **Session Storage** (In-Memory Database)
 `src/lib/services/session-manager.ts` maintains sessions in memory:
@@ -378,10 +453,28 @@ import { getGraph } from '@/utils/api-client';
 import type { Message } from '@/lib/models/types';
 ```
 
+Configured in `tsconfig.json`:
+```json
+{
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}
+```
+
 ### 4. Dynamic Routes
 Use `[param]` for dynamic segments:
 - `api/graph/[id]/route.ts` → `/api/graph/:id`
 - Access param: `params.id` in route handler
+
+### 5. Type Imports
+Use `type` keyword for type-only imports (better for tree-shaking):
+```typescript
+import type { Message, Agent } from '@/lib/models/types';
+import type { GraphResponse } from '@/types/api';
+```
 
 ## Data Storage
 
@@ -544,6 +637,82 @@ Deploy: Vercel, Node.js server, or Docker
 - Update API client function
 - TypeScript will catch mismatches
 
+## Key Application Features
+
+### 1. **Multi-Framework Support**
+CommuGraph can parse and visualize logs from multiple multi-agent frameworks:
+- **AutoGen**: Single JSONL log file
+- **Claude Code**: Multi-file logs (main session + sub-agents)
+
+### 2. **Two Visualization Modes**
+
+**Graph View** (`components/graph/`):
+- Traditional directed graph visualization using React Flow
+- Shows agents as nodes, messages as edges
+- Timeline playback to see communication evolution
+- Step-by-step replay of agent interactions
+
+**Workflow View** (`components/workflow/`):
+- Swimlane timeline visualization (process mining style)
+- Each agent gets its own lane (horizontal swimlane)
+- Events positioned chronologically on time axis
+- Shows concurrent agent activities
+- Includes metrics dashboard with statistics
+
+### 3. **Timeline Playback**
+- Scrub through agent interactions step-by-step
+- See how the communication graph evolves over time
+- Pause, play, and navigate to specific steps
+
+### 4. **Metrics & Analytics**
+- Message count per agent
+- Edge counts (communication frequency)
+- Timeline statistics
+- Sub-agent relationship tracking
+
+## Application Architecture Layers
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    PRESENTATION LAYER                    │
+│         (React Components in Browser)                    │
+│  • GraphView, WorkflowView                              │
+│  • TimelineControls, MetricsDashboard                   │
+│  • PreFlightModal (file upload)                         │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     │ React Hooks + API Client
+                     │ (use-graph-data, api-client.ts)
+                     │
+┌────────────────────▼────────────────────────────────────┐
+│                      API LAYER                           │
+│         (Next.js API Routes on Server)                   │
+│  • POST /api/upload                                      │
+│  • GET /api/graph/:id                                    │
+│  • GET /api/graph/:id/workflow                          │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     │ Service Layer
+                     │
+┌────────────────────▼────────────────────────────────────┐
+│                   BUSINESS LOGIC LAYER                   │
+│         (Services in src/lib/services/)                  │
+│  • ParserService (parse logs)                           │
+│  • GraphBuilder (build graph structure)                 │
+│  • WorkflowGraphBuilder (build swimlane data)           │
+│  • SessionManager (manage sessions)                     │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     │ Data Structures
+                     │
+┌────────────────────▼────────────────────────────────────┐
+│                    DATA LAYER                            │
+│         (In-Memory Storage)                              │
+│  • Sessions (Map<sessionId, SessionData>)               │
+│  • Messages, Graphs, WorkflowGraphs                     │
+└─────────────────────────────────────────────────────────┘
+```
+
 ## Summary
 
 **CommuGraph uses Next.js**, which combines frontend (React) and backend (Node.js API) in one codebase:
@@ -552,5 +721,36 @@ Deploy: Vercel, Node.js server, or Docker
 - **Backend (Server)**: `src/app/api/`, `src/lib/`
 - **Bridge**: `src/utils/api-client.ts` (fetch calls to API routes)
 - **Shared**: `src/types/` (TypeScript types for both sides)
+- **Static Assets**: `public/` (served at root path)
 
 The key difference from traditional split architecture is that everything runs from **one server** on **one port**, with file-based routing for both pages and API endpoints.
+
+## Quick Reference: Where to Find Things
+
+| Looking for... | Location |
+|---------------|----------|
+| Add a new UI component | `src/components/` |
+| Add a new API endpoint | `src/app/api/` |
+| Modify graph visualization | `src/components/graph/` |
+| Modify workflow/swimlane view | `src/components/workflow/` |
+| Add a new parser | `src/lib/parsers/` |
+| Change business logic | `src/lib/services/` |
+| Add new API types | `src/types/api.ts` |
+| Add data models | `src/lib/models/types.ts` |
+| Modify API client | `src/utils/api-client.ts` |
+| Add custom hooks | `src/hooks/` |
+| Modify global state | `src/context/app-context.tsx` |
+| Add static files | `public/` |
+| Configure routing | File-based (no config needed) |
+| Configure TypeScript | `tsconfig.json` |
+| Configure Next.js | `next.config.ts` |
+| Configure Tailwind | `postcss.config.mjs` |
+
+## Related Documentation
+
+- **`USAGE_GUIDE.md`**: User guide for using the application
+- **`PROCESS_MINING_IMPLEMENTATION_PLAN.md`**: Implementation plan and design decisions
+- **`understanding_claude_code_chat_log.md`**: Claude Code log format documentation
+- **`graph_system_implementation.md`**: Graph system technical details
+- **`UI_design.md`**: UI design specifications
+- **`requirement_use_cases.md`**: Requirements and use cases

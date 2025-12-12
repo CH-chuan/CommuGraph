@@ -139,7 +139,12 @@ export interface UploadResponse {
   node_count: number;
   edge_count: number;
   total_steps: number;
+  main_agent_steps: number;
   framework: string;
+  /** Number of sub-agent files loaded (for Claude Code) */
+  sub_agents_loaded?: number;
+  /** Agent IDs for which no file was found (for Claude Code) */
+  sub_agents_missing?: string[];
 }
 
 export interface GraphResponse {
@@ -329,6 +334,7 @@ export interface WorkflowLane {
   id: string; // 'main' or 'agent-{id}'
   label: string;
   agentId?: string;
+  toolUseId?: string; // The tool_use_id that spawned this sub-agent
 
   // Sub-agent metadata
   subagentType?: string;

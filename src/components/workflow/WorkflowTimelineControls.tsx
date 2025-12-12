@@ -20,8 +20,11 @@ import { useAppContext } from '@/context/app-context';
 import { useTimelinePlayback } from '@/hooks/use-timeline-playback';
 
 export function WorkflowTimelineControls() {
-  const { currentStep, setCurrentStep, totalSteps } = useAppContext();
+  const { currentStep, setCurrentStep, mainAgentStepCount } = useAppContext();
   const { isPlaying, play, pause, reset } = useTimelinePlayback();
+
+  // Use main agent step count for Claude Code workflow
+  const effectiveSteps = mainAgentStepCount;
 
   return (
     <div className="border-t bg-white">
@@ -67,8 +70,8 @@ export function WorkflowTimelineControls() {
         <Button
           variant="outline"
           size="icon"
-          onClick={() => setCurrentStep(Math.min(totalSteps, currentStep + 1))}
-          disabled={currentStep === totalSteps}
+          onClick={() => setCurrentStep(Math.min(effectiveSteps, currentStep + 1))}
+          disabled={currentStep === effectiveSteps}
           title="Next step"
         >
           <ChevronRight className="h-4 w-4" />
@@ -79,7 +82,7 @@ export function WorkflowTimelineControls() {
           <Slider
             value={[currentStep]}
             onValueChange={(values) => setCurrentStep(values[0])}
-            max={totalSteps}
+            max={effectiveSteps}
             step={1}
             className="w-full"
           />
@@ -87,7 +90,7 @@ export function WorkflowTimelineControls() {
 
         {/* Step counter */}
         <div className="text-sm text-slate-600 min-w-[120px] text-right font-mono">
-          Step {currentStep} / {totalSteps}
+          Step {currentStep} / {effectiveSteps}
         </div>
       </div>
     </div>

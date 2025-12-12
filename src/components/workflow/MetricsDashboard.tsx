@@ -4,13 +4,14 @@
  * MetricsDashboard - Sidebar with session metrics
  *
  * Displays:
+ * - Agent filter dropdown (Main Agent, All Agents, Sub-agent-X)
  * - Session summary (duration, tokens, tool calls)
  * - Activity breakdown (bar chart)
  * - Tool usage stats
  * - Sub-agent summary
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Clock,
   Coins,
@@ -20,9 +21,11 @@ import {
   Bot,
   ChevronDown,
   ChevronRight,
+  Filter,
 } from 'lucide-react';
-import type { WorkflowGraphSnapshot } from '@/lib/models/types';
-import { useState } from 'react';
+import type { WorkflowGraphSnapshot, WorkflowLane } from '@/lib/models/types';
+import { formatSubAgentName } from '@/utils/agent-naming';
+import { useAppContext } from '@/context/app-context';
 
 interface MetricsDashboardProps {
   data: WorkflowGraphSnapshot;
@@ -157,46 +160,195 @@ function CollapsibleSection({
 }
 
 /**
+ * Get label for agent filter option
+ */
+function getAgentFilterLabel(lane: WorkflowLane): string {
+  if (lane.id === 'main') return 'Main Agent';
+  return formatSubAgentName(lane.subagentType || 'Agent', lane.agentId || lane.id.replace('agent-', ''));
+}
+
+/**
  * MetricsDashboard Component
  */
 export function MetricsDashboard({ data }: MetricsDashboardProps) {
-  // Calculate metrics
-  const metrics = useMemo(() => {
-    const { nodes, lanes, totalTokens, totalToolCalls, toolSuccessRate, totalDurationMs } = data;
+  const { selectedMetricsAgent, setSelectedMetricsAgent } = useAppContext();
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-    // Activity breakdown
-    const activityCounts: Record<string, number> = {};
-    for (const node of nodes) {
-      activityCounts[node.nodeType] = (activityCounts[node.nodeType] || 0) + 1;
+  // Build filter options from lanes
+  const filterOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [
+      { value: 'main', label: 'Main Agent' },
+      { value: 'all', label: 'All Agents' },
+    ];
+
+    // Add sub-agent options
+    const subAgentLanes = data.lanes.filter(l => l.id !== 'main');
+    for (const lane of subAgentLanes) {
+      options.push({
+        value: lane.id,
+        label: getAgentFilterLabel(lane),
+      });
     }
 
-    // Tool breakdown
+    return options;
+  }, [data.lanes]);
+
+  // Get current filter label
+  const currentFilterLabel = useMemo(() => {
+    const option = filterOptions.find(o => o.value === selectedMetricsAgent);
+    return option?.label || 'Main Agent';
+  }, [filterOptions, selectedMetricsAgent]);
+
+  // Helper to calculate metrics from nodes
+  const calculateNodeMetrics = (filteredNodes: typeof data.nodes) => {
+    let tokens = 0;
+    let toolCalls = 0;
+    let successCount = 0;
+    let failureCount = 0;
+    const activityCounts: Record<string, number> = {};
     const toolCounts: Record<string, number> = {};
-    for (const node of nodes) {
-      if (node.nodeType === 'tool_call' && node.toolName) {
-        toolCounts[node.toolName] = (toolCounts[node.toolName] || 0) + 1;
+
+    for (const node of filteredNodes) {
+      tokens += (node.inputTokens || 0) + (node.outputTokens || 0);
+
+      // For activity counts, merge tool_result into result_success
+      // so that Success + Failure = Tool Calls
+      if (node.nodeType === 'tool_result') {
+        activityCounts['result_success'] = (activityCounts['result_success'] || 0) + 1;
+      } else {
+        activityCounts[node.nodeType] = (activityCounts[node.nodeType] || 0) + 1;
+      }
+
+      if (node.nodeType === 'tool_call') {
+        toolCalls++;
+        if (node.toolName) {
+          toolCounts[node.toolName] = (toolCounts[node.toolName] || 0) + 1;
+        }
+      }
+      // Count tool results: result_success and tool_result are both successful
+      if (node.nodeType === 'result_success' || node.nodeType === 'tool_result') {
+        successCount++;
+      }
+      if (node.nodeType === 'result_failure') {
+        failureCount++;
       }
     }
 
-    // Sort tools by count
+    // Success rate = successful results / (successful + failed results)
+    const totalResults = successCount + failureCount;
+    const successRate = totalResults > 0 ? successCount / totalResults : 1;
+
     const sortedTools = Object.entries(toolCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10);
 
-    // Sub-agent stats
+    return { tokens, toolCalls, successCount, failureCount, successRate, activityCounts, sortedTools, nodeCount: filteredNodes.length };
+  };
+
+  // Calculate metrics based on selected filter
+  const metrics = useMemo(() => {
+    const { nodes, lanes, totalDurationMs } = data;
+
+    // Get sub-agent lanes for reference
     const subAgentLanes = lanes.filter(l => l.id !== 'main');
 
+    // Calculate main agent metrics from main lane nodes
+    const mainNodes = nodes.filter(n => n.laneId === 'main');
+    const mainMetrics = calculateNodeMetrics(mainNodes);
+
+    // For "all agents" - sum main agent + all sub-agents
+    if (selectedMetricsAgent === 'all') {
+      // Sum tokens: main agent tokens + all sub-agent tokens from lanes
+      const subAgentTokens = subAgentLanes.reduce((sum, l) => sum + (l.totalTokens || 0), 0);
+      const allTokens = mainMetrics.tokens + subAgentTokens;
+
+      // Sum tool calls: main agent + all sub-agent tool calls from lanes
+      const subAgentToolCalls = subAgentLanes.reduce((sum, l) => sum + (l.totalToolUseCount || 0), 0);
+      const allToolCalls = mainMetrics.toolCalls + subAgentToolCalls;
+
+      // Activity breakdown from all nodes
+      // Merge tool_result into result_success so Success + Failure = Tool Calls
+      const activityCounts: Record<string, number> = {};
+      for (const node of nodes) {
+        if (node.nodeType === 'tool_result') {
+          activityCounts['result_success'] = (activityCounts['result_success'] || 0) + 1;
+        } else {
+          activityCounts[node.nodeType] = (activityCounts[node.nodeType] || 0) + 1;
+        }
+      }
+
+      // Tool breakdown from all nodes
+      const toolCounts: Record<string, number> = {};
+      for (const node of nodes) {
+        if (node.nodeType === 'tool_call' && node.toolName) {
+          toolCounts[node.toolName] = (toolCounts[node.toolName] || 0) + 1;
+        }
+      }
+
+      const sortedTools = Object.entries(toolCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+
+      // Success rate = successful results / total results
+      let successCount = 0;
+      let failureCount = 0;
+      for (const node of nodes) {
+        // result_success and tool_result are both successful
+        if (node.nodeType === 'result_success' || node.nodeType === 'tool_result') {
+          successCount++;
+        }
+        if (node.nodeType === 'result_failure') {
+          failureCount++;
+        }
+      }
+      const totalResults = successCount + failureCount;
+      const allSuccessRate = totalResults > 0 ? successCount / totalResults : 1;
+
+      return {
+        totalDuration: totalDurationMs,
+        totalTokens: allTokens,
+        totalToolCalls: allToolCalls,
+        successRate: allSuccessRate,
+        totalNodes: nodes.length,
+        activityCounts,
+        sortedTools,
+        subAgentLanes,
+      };
+    }
+
+    // For specific sub-agent - calculate from sub-agent's nodes
+    if (selectedMetricsAgent !== 'main') {
+      const targetLane = lanes.find(l => l.id === selectedMetricsAgent);
+      const filteredNodes = nodes.filter(n => n.laneId === selectedMetricsAgent);
+      const subAgentMetrics = calculateNodeMetrics(filteredNodes);
+
+      return {
+        // Use lane metrics for duration/tokens (from agent-*.jsonl metadata)
+        // But use calculated metrics for tool calls and activity (from parsed nodes)
+        totalDuration: targetLane?.totalDurationMs || 0,
+        totalTokens: targetLane?.totalTokens || subAgentMetrics.tokens,
+        totalToolCalls: targetLane?.totalToolUseCount || subAgentMetrics.toolCalls,
+        successRate: subAgentMetrics.successRate,
+        totalNodes: subAgentMetrics.nodeCount,
+        activityCounts: subAgentMetrics.activityCounts,
+        sortedTools: subAgentMetrics.sortedTools,
+        subAgentLanes,
+      };
+    }
+
+    // For main agent - use calculated metrics from main lane nodes
+    // Duration is same as total (linear process in Claude Code)
     return {
       totalDuration: totalDurationMs,
-      totalTokens,
-      totalToolCalls,
-      successRate: toolSuccessRate,
-      totalNodes: nodes.length,
-      activityCounts,
-      sortedTools,
+      totalTokens: mainMetrics.tokens,
+      totalToolCalls: mainMetrics.toolCalls,
+      successRate: mainMetrics.successRate,
+      totalNodes: mainMetrics.nodeCount,
+      activityCounts: mainMetrics.activityCounts,
+      sortedTools: mainMetrics.sortedTools,
       subAgentLanes,
     };
-  }, [data]);
+  }, [data, selectedMetricsAgent]);
 
   // Activity type colors
   const activityColors: Record<string, string> = {
@@ -222,9 +374,47 @@ export function MetricsDashboard({ data }: MetricsDashboardProps) {
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50 p-4 space-y-4">
-      {/* Header */}
-      <div className="text-lg font-semibold text-slate-800">
-        Session Metrics
+      {/* Header with Agent Filter */}
+      <div className="space-y-2">
+        <div className="text-lg font-semibold text-slate-800">
+          Session Metrics
+        </div>
+
+        {/* Agent Filter Dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-white rounded-lg border border-slate-200 hover:border-slate-300 transition-colors text-sm"
+          >
+            <span className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-slate-400" />
+              <span className="font-medium text-slate-700">{currentFilterLabel}</span>
+            </span>
+            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isFilterOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Dropdown Menu */}
+          {isFilterOpen && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg border border-slate-200 shadow-lg z-50 py-1">
+              {filterOptions.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => {
+                    setSelectedMetricsAgent(option.value);
+                    setIsFilterOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 text-left text-sm hover:bg-slate-50 transition-colors ${
+                    selectedMetricsAgent === option.value
+                      ? 'bg-blue-50 text-blue-700 font-medium'
+                      : 'text-slate-700'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -249,7 +439,7 @@ export function MetricsDashboard({ data }: MetricsDashboardProps) {
         />
         <MetricCard
           icon={<CheckCircle className="w-4 h-4" />}
-          label="Success Rate"
+          label="Action Success Rate"
           value={`${Math.round(metrics.successRate * 100)}%`}
           color={metrics.successRate > 0.9 ? 'green' : metrics.successRate > 0.7 ? 'amber' : 'red'}
         />
@@ -292,7 +482,7 @@ export function MetricsDashboard({ data }: MetricsDashboardProps) {
               <div className="flex items-center gap-2 mb-1">
                 <Bot className="w-4 h-4 text-purple-500" />
                 <span className="text-sm font-medium text-slate-700 truncate">
-                  {lane.subagentType || lane.agentId}
+                  {formatSubAgentName(lane.subagentType || 'Agent', lane.agentId || lane.id.replace('agent-', ''))}
                 </span>
                 {lane.status && (
                   <span

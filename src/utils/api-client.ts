@@ -17,10 +17,15 @@ import type {
  *
  * For Claude Code: supports multiple files (main session + agent-*.jsonl)
  * For other frameworks: single file upload
+ *
+ * @param files - Array of files to upload
+ * @param framework - Framework identifier ('autogen', 'claudecode', etc.)
+ * @param subAgentDirectory - (Optional) Directory path to search for sub-agent files
  */
 export async function uploadLogFiles(
   files: File[],
-  framework: string
+  framework: string,
+  subAgentDirectory?: string
 ): Promise<UploadResponse> {
   const formData = new FormData();
 
@@ -29,6 +34,11 @@ export async function uploadLogFiles(
     formData.append('file', file);
   }
   formData.append('framework', framework);
+
+  // Append sub-agent directory if provided
+  if (subAgentDirectory) {
+    formData.append('subAgentDirectory', subAgentDirectory);
+  }
 
   const response = await fetch('/api/upload', {
     method: 'POST',

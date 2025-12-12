@@ -36,8 +36,14 @@ export function TimelineControls() {
     currentStep,
     setCurrentStep,
     totalSteps,
+    mainAgentStepCount,
+    framework,
     setHighlightedAgentId,
   } = useAppContext();
+
+  // For Claude Code, use mainAgentStepCount to exclude sub-agent steps
+  const isClaudeCode = framework === 'claudecode';
+  const effectiveSteps = isClaudeCode ? mainAgentStepCount : totalSteps;
   const { isPlaying, play, pause } = useTimelinePlayback();
   const { data } = useGraphData(graphId, undefined); // Get full data for timeline
   const [isExpanded, setIsExpanded] = useState(true);
@@ -71,8 +77,8 @@ export function TimelineControls() {
 
   // Calculate block positions
   const getBlockPosition = (step: number) => {
-    if (totalSteps === 0) return 0;
-    return (step / totalSteps) * 100;
+    if (effectiveSteps === 0) return 0;
+    return (step / effectiveSteps) * 100;
   };
 
   return (
@@ -105,8 +111,8 @@ export function TimelineControls() {
         <Button
           variant="outline"
           size="icon"
-          onClick={() => setCurrentStep(Math.min(totalSteps, currentStep + 1))}
-          disabled={currentStep === totalSteps}
+          onClick={() => setCurrentStep(Math.min(effectiveSteps, currentStep + 1))}
+          disabled={currentStep === effectiveSteps}
           title="Next step"
         >
           <ChevronRight className="h-4 w-4" />
@@ -116,14 +122,14 @@ export function TimelineControls() {
           <Slider
             value={[currentStep]}
             onValueChange={(values) => setCurrentStep(values[0])}
-            max={totalSteps}
+            max={effectiveSteps}
             step={1}
             className="w-full"
           />
         </div>
 
         <div className="text-sm text-slate-600 min-w-[100px] text-right">
-          Step {currentStep} / {totalSteps}
+          Step {currentStep} / {effectiveSteps}
         </div>
 
         {/* Expand/Collapse button */}
@@ -198,7 +204,7 @@ export function TimelineControls() {
                           style={{
                             left: `${getBlockPosition(step)}%`,
                             top: (TRACK_HEIGHT - BLOCK_HEIGHT) / 2,
-                            width: Math.max(8, 100 / totalSteps) + '%',
+                            width: Math.max(8, 100 / effectiveSteps) + '%',
                             minWidth: '8px',
                             height: BLOCK_HEIGHT,
                             backgroundColor: color,
@@ -220,7 +226,7 @@ export function TimelineControls() {
             <div className="w-[120px]" />
             <div className="flex-1 relative">
               {[0, 25, 50, 75, 100].map((percent) => {
-                const step = Math.round((percent / 100) * totalSteps);
+                const step = Math.round((percent / 100) * effectiveSteps);
                 return (
                   <span
                     key={percent}

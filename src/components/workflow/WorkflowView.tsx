@@ -13,12 +13,14 @@
  * - Node filtering by step
  */
 
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useState, useEffect } from 'react';
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
+  useReactFlow,
+  ReactFlowProvider,
   type Node,
   type Edge,
   Position,
@@ -67,9 +69,29 @@ function convertToReactFlow(
 ): { nodes: Node[]; edges: Edge[]; totalHeight: number } {
   const { nodes, edges, lanes } = snapshot;
 
-  // Filter nodes by current step
-  const visibleNodes = currentStep !== null
-    ? nodes.filter(n => n.stepIndex <= currentStep)
+  // Build list of main agent nodes sorted by stepIndex for step mapping
+  // Main agent nodes are in 'main' lane and not session start nodes
+  const mainAgentNodes = nodes
+    .filter(n => n.laneId === 'main' && !n.isSessionStart)
+    .sort((a, b) => a.stepIndex - b.stepIndex);
+
+  // Map main agent step number to actual stepIndex
+  // currentStep now represents "show up to the Nth main agent node"
+  let effectiveStepIndex: number | null = null;
+  if (currentStep !== null && mainAgentNodes.length > 0) {
+    // Clamp to valid range (currentStep is 1-indexed for display, 0 means start)
+    const targetIndex = Math.min(currentStep, mainAgentNodes.length) - 1;
+    if (targetIndex >= 0) {
+      effectiveStepIndex = mainAgentNodes[targetIndex].stepIndex;
+    } else {
+      // currentStep is 0, show only session start
+      effectiveStepIndex = -1;
+    }
+  }
+
+  // Filter nodes by effective step index
+  const visibleNodes = effectiveStepIndex !== null
+    ? nodes.filter(n => n.stepIndex <= effectiveStepIndex)
     : nodes;
 
   const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
@@ -84,7 +106,8 @@ function convertToReactFlow(
 
   // Convert to React Flow nodes
   const reactFlowNodes: Node[] = layout.nodes.map(node => {
-    const isCurrent = currentStep !== null && node.stepIndex === currentStep;
+    // Use effectiveStepIndex for current node highlighting
+    const isCurrent = effectiveStepIndex !== null && node.stepIndex === effectiveStepIndex;
     const isHighlighted = highlightedStepIndex !== null && node.stepIndex === highlightedStepIndex;
     const nodeType = getReactFlowNodeType(node);
 
@@ -134,9 +157,10 @@ function convertToReactFlow(
   });
 
   // Convert edges
-  const maxStep = currentStep ?? snapshot.totalSteps;
+  // Use effectiveStepIndex for edge current highlighting
+  const maxStep = effectiveStepIndex ?? snapshot.totalSteps;
   const reactFlowEdges: Edge[] = layout.edges.map(edge => {
-    const isCurrent = edge.stepIndex === maxStep - 1;
+    const isCurrent = edge.stepIndex === maxStep;
 
     return {
       id: edge.id,
@@ -158,10 +182,62 @@ function convertToReactFlow(
 }
 
 /**
- * WorkflowView Component
+ * Inner WorkflowView Component - Has access to useReactFlow for focus/centering
+ */
+function WorkflowViewInner() {
+  const { focusStepIndex, setFocusStepIndex } = useAppContext();
+  const { setCenter, getNodes } = useReactFlow();
+
+  // Focus on node when focusStepIndex changes (triggered by chat log double-click)
+  useEffect(() => {
+    if (focusStepIndex === null) return;
+
+    // Find the node with this stepIndex
+    const targetNode = getNodes().find(
+      (n) => (n.data as { stepIndex?: number }).stepIndex === focusStepIndex
+    );
+
+    if (targetNode) {
+      // Center on the node with animation
+      const nodeWidth = (targetNode.style?.width as number) || 200;
+      const nodeHeight = 100; // Approximate node height
+      setCenter(
+        targetNode.position.x + nodeWidth / 2,
+        targetNode.position.y + nodeHeight / 2,
+        { zoom: 1, duration: 500 }
+      );
+    }
+
+    // Clear the focus after centering
+    setFocusStepIndex(null);
+  }, [focusStepIndex, setFocusStepIndex, setCenter, getNodes]);
+
+  return (
+    <>
+      <Background gap={20} size={1} color="#f1f5f9" />
+      <Controls showInteractive={false} position="bottom-right" />
+      <MiniMap
+        position="bottom-left"
+        nodeColor={(node) => {
+          const nodeType = (node.data as { nodeType?: string }).nodeType;
+          const isSessionStart = (node.data as { isSessionStart?: boolean }).isSessionStart;
+          const isSubAgent = (node.data as { isSubAgentContainer?: boolean }).isSubAgentContainer;
+
+          if (isSessionStart) return '#3B82F6'; // Blue for session start
+          if (isSubAgent) return '#8B5CF6'; // Purple for sub-agents
+          return getNodeColor(nodeType || 'system_notice');
+        }}
+        maskColor="rgba(0, 0, 0, 0.1)"
+      />
+    </>
+  );
+}
+
+/**
+ * WorkflowView Component - Wrapped with ReactFlowProvider
  */
 export function WorkflowView({ data }: WorkflowViewProps) {
-  const { currentStep, setCurrentStep, highlightedStepIndex, setHighlightedStepIndex, graphId } = useAppContext();
+  const { currentStep, highlightedStepIndex, setCurrentStep, setHighlightedStepIndex, graphId } = useAppContext();
   const [selectedSubAgentId, setSelectedSubAgentId] = useState<string | null>(null);
 
   // Handle sub-agent expand
@@ -200,21 +276,12 @@ export function WorkflowView({ data }: WorkflowViewProps) {
     [setCurrentStep, setHighlightedStepIndex]
   );
 
-
-  // Calculate viewport dimensions
-  const viewportHeight = useMemo(() => {
-    return Math.max(600, totalHeight + TREE_LAYOUT_CONFIG.padding * 2);
-  }, [totalHeight]);
-
   if (nodes.length === 0) {
     return (
       <div className="flex h-full items-center justify-center bg-slate-50">
         <div className="text-center">
           <div className="text-lg font-medium text-slate-700">
-            No workflow data
-          </div>
-          <div className="text-sm text-slate-500">
-            Upload a Claude Code log to visualize the workflow
+            Click button at the bottom to start
           </div>
         </div>
       </div>
@@ -239,21 +306,7 @@ export function WorkflowView({ data }: WorkflowViewProps) {
           proOptions={{ hideAttribution: true }}
           defaultViewport={{ x: 0, y: 0, zoom: 0.7 }}
         >
-          <Background gap={20} size={1} color="#f1f5f9" />
-          <Controls showInteractive={false} position="bottom-right" />
-          <MiniMap
-            position="bottom-left"
-            nodeColor={(node) => {
-              const nodeType = (node.data as { nodeType?: string }).nodeType;
-              const isSessionStart = (node.data as { isSessionStart?: boolean }).isSessionStart;
-              const isSubAgent = (node.data as { isSubAgentContainer?: boolean }).isSubAgentContainer;
-
-              if (isSessionStart) return '#3B82F6'; // Blue for session start
-              if (isSubAgent) return '#8B5CF6'; // Purple for sub-agents
-              return getNodeColor(nodeType || 'system_notice');
-            }}
-            maskColor="rgba(0, 0, 0, 0.1)"
-          />
+          <WorkflowViewInner />
         </ReactFlow>
       </div>
 

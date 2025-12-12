@@ -5,9 +5,11 @@
  * - file: Single log file (JSONL or JSON) for AutoGen
  * - files: Multiple log files for Claude Code (main session + agent-*.jsonl)
  * - framework: Framework name (e.g., 'autogen', 'claudecode')
+ * - subAgentDirectory: (optional) Directory path to search for sub-agent files
  *
  * For Claude Code:
  * - Automatically detects the main session file (UUID format, not agent-*)
+ * - Loads sub-agent files from uploaded files or from subAgentDirectory
  * - Merges all files for complete sub-agent visualization
  *
  * Returns: UploadResponse with graph_id and metadata
@@ -20,10 +22,15 @@ import { createSession } from '@/lib/services/session-manager';
 import { ParserError } from '@/lib/parsers/base-parser';
 import { ClaudeCodeParser } from '@/lib/parsers/claude-code-parser';
 import { WorkflowGraphBuilder } from '@/lib/services/workflow-graph-builder';
+import { loadSubAgentFiles, isValidSubAgentDirectory } from '@/lib/services/sub-agent-loader';
+import { isSubAgentFile } from '@/lib/parsers/agent-id-extractor';
 import type { UploadResponse, ErrorResponse, WorkflowGraphSnapshot } from '@/lib/models/types';
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
-const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB total
+// Default sub-agent directory for development
+const DEFAULT_SUBAGENT_DIR = 'public/samples/Users-harrywang-sandbox-paperfox';
+
+const MAX_FILE_SIZE = 30 * 1024 * 1024; // 30MB per file
+const MAX_TOTAL_SIZE = 100 * 1024 * 1024; // 100MB total
 
 export async function POST(request: NextRequest): Promise<NextResponse<UploadResponse | ErrorResponse>> {
   try {
@@ -79,25 +86,73 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
     // Parse the log file(s)
     let messages;
     let workflowGraph: WorkflowGraphSnapshot | undefined;
+    let subAgentsLoaded = 0;
+    let subAgentsMissing: string[] = [];
 
     try {
       if (framework === 'claudecode' && files.length > 0) {
-        // Claude Code: use multi-file parsing
+        // Claude Code: use lazy sub-agent loading
         const claudeParser = new ClaudeCodeParser();
 
-        // Read all files into a map
-        const fileContents = new Map<string, string>();
+        // Read all uploaded files into a map
+        const uploadedFileContents = new Map<string, string>();
         for (const file of files) {
           const content = await file.text();
-          fileContents.set(file.name, content);
+          uploadedFileContents.set(file.name, content);
         }
 
-        // Parse with multi-file support
-        const parseResult = files.length > 1
-          ? claudeParser.parseMultiFile(fileContents)
-          : claudeParser.parseClaudeCodeLog(await files[0].text());
+        // Identify main session file (UUID format, not agent-*)
+        let mainFilename: string | undefined;
+        let mainContent: string | undefined;
 
-        // Convert to Message format for compatibility
+        for (const [filename, content] of uploadedFileContents) {
+          if (!isSubAgentFile(filename)) {
+            mainFilename = filename;
+            mainContent = content;
+            break;
+          }
+        }
+
+        if (!mainFilename || !mainContent) {
+          return NextResponse.json(
+            { error: 'Bad Request', message: 'No main session file found (expected UUID format filename, not agent-*)' },
+            { status: 400 }
+          );
+        }
+
+        // Get sub-agent directory from form data (optional)
+        const subAgentDirParam = formData.get('subAgentDirectory') as string | null;
+        let subAgentDir: string | undefined;
+
+        if (subAgentDirParam && isValidSubAgentDirectory(subAgentDirParam)) {
+          subAgentDir = subAgentDirParam;
+        } else {
+          // Use default directory for development
+          subAgentDir = DEFAULT_SUBAGENT_DIR;
+        }
+
+        // Lazy load sub-agent files
+        const subAgentResult = await loadSubAgentFiles(mainContent, {
+          baseDirectory: subAgentDir,
+          uploadedFiles: uploadedFileContents,
+        });
+
+        // Track loading results
+        subAgentsLoaded = subAgentResult.loadedFiles.size;
+        subAgentsMissing = subAgentResult.missingAgentIds;
+
+        // Log any errors
+        if (subAgentResult.errors.length > 0) {
+          console.error('[Upload] Sub-agent loading errors:', subAgentResult.errors);
+        }
+
+        // Parse with all available files
+        const parseResult = claudeParser.parseWithLazySubAgents(
+          mainContent,
+          mainFilename,
+          subAgentResult.loadedFiles
+        );
+
         messages = parseResult.messages;
 
         // Build the workflow graph
@@ -135,13 +190,27 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
       ? Math.max(...messages.map((m) => m.step_index))
       : 0;
 
+    // Calculate main agent steps (excluding sub-agent messages)
+    // For Claude Code, filter by isSidechain; for others, use total
+    const mainAgentMessages = messages.filter((m) => {
+      // Check if message has isSidechain property (Claude Code messages)
+      const msg = m as { isSidechain?: boolean };
+      return msg.isSidechain !== true;
+    });
+    // Use COUNT of main agent messages, not MAX step_index
+    const mainAgentSteps = mainAgentMessages.length;
+
     const response: UploadResponse = {
       graph_id: sessionId,
       message_count: messages.length,
       node_count: graph?.numberOfNodes() ?? 0,
       edge_count: graph?.numberOfEdges() ?? 0,
       total_steps: totalSteps,
+      main_agent_steps: mainAgentSteps,
       framework,
+      // Sub-agent loading info (for Claude Code)
+      sub_agents_loaded: subAgentsLoaded > 0 ? subAgentsLoaded : undefined,
+      sub_agents_missing: subAgentsMissing.length > 0 ? subAgentsMissing : undefined,
     };
 
     return NextResponse.json(response);

@@ -18,12 +18,20 @@ interface AppContextType {
   setCurrentStep: (step: number | ((prev: number) => number)) => void;
   totalSteps: number;
   setTotalSteps: (steps: number) => void;
+  mainAgentStepCount: number;
+  setMainAgentStepCount: (steps: number) => void;
   abstractionMode: string | null;
   setAbstractionMode: (mode: string | null) => void;
   highlightedAgentId: string | null;
   setHighlightedAgentId: (id: string | null) => void;
   highlightedStepIndex: number | null;
   setHighlightedStepIndex: (step: number | null) => void;
+  focusStepIndex: number | null;
+  setFocusStepIndex: (step: number | null) => void;
+  showSubAgentMessages: boolean;
+  setShowSubAgentMessages: (show: boolean) => void;
+  selectedMetricsAgent: string;
+  setSelectedMetricsAgent: (agent: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -33,6 +41,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [framework, setFramework] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [totalSteps, setTotalSteps] = useState(0);
+  const [mainAgentStepCount, setMainAgentStepCount] = useState(0);
   const [abstractionMode, setAbstractionMode] = useState<string | null>(null);
   const [highlightedAgentId, setHighlightedAgentId] = useState<string | null>(
     null
@@ -40,6 +49,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [highlightedStepIndex, setHighlightedStepIndex] = useState<
     number | null
   >(null);
+  const [focusStepIndex, setFocusStepIndex] = useState<number | null>(null);
+  const [showSubAgentMessages, setShowSubAgentMessages] = useState(false);
+  const [selectedMetricsAgent, setSelectedMetricsAgent] = useState('main');
 
   return (
     <AppContext.Provider
@@ -52,12 +64,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setCurrentStep,
         totalSteps,
         setTotalSteps,
+        mainAgentStepCount,
+        setMainAgentStepCount,
         abstractionMode,
         setAbstractionMode,
         highlightedAgentId,
         setHighlightedAgentId,
         highlightedStepIndex,
         setHighlightedStepIndex,
+        focusStepIndex,
+        setFocusStepIndex,
+        showSubAgentMessages,
+        setShowSubAgentMessages,
+        selectedMetricsAgent,
+        setSelectedMetricsAgent,
       }}
     >
       {children}

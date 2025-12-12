@@ -13,7 +13,9 @@ import { useAppContext } from '@/context/app-context';
 import { useGraphData } from '@/hooks/use-graph-data';
 import { useWorkflowData } from '@/hooks/use-workflow-data';
 import { getAgentColor } from '@/utils/graph-adapters';
-import { MessageSquare, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { formatSubAgentName, extractAgentIdFromLaneId } from '@/utils/agent-naming';
+import { MessageSquare, ArrowRight, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
+import type { WorkflowNodeType } from '@/lib/models/types';
 
 interface ChatMessage {
   stepIndex: number;
@@ -21,7 +23,48 @@ interface ChatMessage {
   receiver: string | null;
   content: string;
   timestamp?: string;
+  nodeType?: WorkflowNodeType; // For Claude Code messages
+  laneId?: string; // For Claude Code - 'main' or 'agent-{id}'
 }
+
+// Color config matching WorkflowNode.tsx
+const nodeTypeColors: Record<string, { bg: string; border: string; text: string }> = {
+  user_input: {
+    bg: 'bg-blue-50',
+    border: 'border-blue-400',
+    text: 'text-blue-700',
+  },
+  agent_reasoning: {
+    bg: 'bg-purple-50',
+    border: 'border-purple-400',
+    text: 'text-purple-700',
+  },
+  tool_call: {
+    bg: 'bg-emerald-50',
+    border: 'border-emerald-400',
+    text: 'text-emerald-700',
+  },
+  tool_result: {
+    bg: 'bg-green-50',
+    border: 'border-green-400',
+    text: 'text-green-700',
+  },
+  result_success: {
+    bg: 'bg-green-50',
+    border: 'border-green-400',
+    text: 'text-green-700',
+  },
+  result_failure: {
+    bg: 'bg-red-50',
+    border: 'border-red-400',
+    text: 'text-red-700',
+  },
+  system_notice: {
+    bg: 'bg-slate-50',
+    border: 'border-slate-400',
+    text: 'text-slate-700',
+  },
+};
 
 export function ChatLog() {
   const {
@@ -31,6 +74,10 @@ export function ChatLog() {
     setCurrentStep,
     highlightedStepIndex,
     setHighlightedStepIndex,
+    setFocusStepIndex,
+    showSubAgentMessages,
+    setShowSubAgentMessages,
+    mainAgentStepCount,
   } = useAppContext();
 
   const isClaudeCode = framework === 'claudecode';
@@ -54,10 +101,15 @@ export function ChatLog() {
   const [animatingStepIndex, setAnimatingStepIndex] = useState<number | null>(null);
 
   // Extract messages based on framework
-  const { messages, agentColors } = useMemo(() => {
+  const { messages, agentColors, mainStepIndices } = useMemo(() => {
     // For Claude Code, extract from workflow nodes
     if (isClaudeCode && workflowData?.workflow) {
       const workflow = workflowData.workflow;
+
+      // Build lane info map for formatting sub-agent names
+      const laneInfoMap = new Map(
+        workflow.lanes.map((l) => [l.id, { subagentType: l.subagentType, agentId: l.agentId }])
+      );
 
       // Build colors from lanes
       const laneIds = workflow.lanes.map((l) => l.id);
@@ -65,23 +117,55 @@ export function ChatLog() {
         laneIds.map((id) => [id, getAgentColor(id, laneIds)])
       );
 
+      // Build main agent step indices for step mapping
+      const mainNodes = workflow.nodes
+        .filter((n) => n.laneId === 'main' && !n.isSessionStart)
+        .sort((a, b) => a.stepIndex - b.stepIndex);
+      const stepIndices = mainNodes.map((n) => n.stepIndex);
+
+      // Filter nodes based on showSubAgentMessages toggle
+      const filteredNodes = showSubAgentMessages
+        ? workflow.nodes
+        : workflow.nodes.filter((node) => node.laneId === 'main');
+
       // Extract messages from workflow nodes
-      const allMessages: ChatMessage[] = workflow.nodes.map((node) => ({
-        stepIndex: node.stepIndex,
-        sender: node.laneId === 'main' ? 'Main Agent' : node.laneId,
-        receiver: null, // Workflow nodes don't have explicit receivers
-        content: node.content || node.contentPreview || node.label,
-        timestamp: node.timestamp,
-      }));
+      const allMessages: ChatMessage[] = filteredNodes.map((node) => {
+        // Format sender name to match graph node naming
+        let senderName: string;
+
+        // User input is a special case - just "User Input"
+        if (node.nodeType === 'user_input') {
+          senderName = 'User Input';
+        } else if (node.laneId === 'main') {
+          // Main agent: "Main Agent - {label}"
+          senderName = `Main Agent - ${node.label}`;
+        } else {
+          // Sub-agent: "{formatted agent name} - {label}"
+          const laneInfo = laneInfoMap.get(node.laneId);
+          const agentId = laneInfo?.agentId || extractAgentIdFromLaneId(node.laneId) || node.laneId;
+          const agentBaseName = formatSubAgentName(laneInfo?.subagentType || 'Agent', agentId);
+          senderName = `${agentBaseName} - ${node.label}`;
+        }
+
+        return {
+          stepIndex: node.stepIndex,
+          sender: senderName,
+          receiver: null, // Workflow nodes don't have explicit receivers
+          content: node.content || node.contentPreview || node.label,
+          timestamp: node.timestamp,
+          nodeType: node.nodeType, // For color matching with graph nodes
+          laneId: node.laneId, // For determining if main agent or sub-agent
+        };
+      });
 
       // Sort by step index
       allMessages.sort((a, b) => a.stepIndex - b.stepIndex);
 
-      return { messages: allMessages, agentColors: colors };
+      return { messages: allMessages, agentColors: colors, mainStepIndices: stepIndices };
     }
 
     // For AutoGen and others, extract from graph edges
-    if (!graphData?.graph) return { messages: [], agentColors: new Map() };
+    if (!graphData?.graph) return { messages: [], agentColors: new Map(), mainStepIndices: [] };
 
     const agentIds = graphData.graph.nodes.map((n) => n.id);
     const colors = new Map(
@@ -113,8 +197,23 @@ export function ChatLog() {
     // Sort by step index
     allMessages.sort((a, b) => a.stepIndex - b.stepIndex);
 
-    return { messages: allMessages, agentColors: colors };
-  }, [isClaudeCode, workflowData, graphData]);
+    return { messages: allMessages, agentColors: colors, mainStepIndices: [] };
+  }, [isClaudeCode, workflowData, graphData, showSubAgentMessages]);
+
+  // For Claude Code, compute effectiveStepIndex from currentStep (main agent step number)
+  const effectiveStepIndex = useMemo(() => {
+    if (!isClaudeCode || mainStepIndices.length === 0) {
+      // For non-Claude Code or when mapping not available, use currentStep directly
+      return currentStep;
+    }
+    // Map main agent step number to actual stepIndex
+    const targetIndex = Math.min(currentStep, mainStepIndices.length) - 1;
+    if (targetIndex >= 0) {
+      return mainStepIndices[targetIndex];
+    }
+    // currentStep is 0, return -1 (before all messages)
+    return -1;
+  }, [isClaudeCode, mainStepIndices, currentStep]);
 
   // Auto-scroll to highlighted step (from graph node click) with animation
   useEffect(() => {
@@ -176,8 +275,31 @@ export function ChatLog() {
     <div ref={containerRef} className="h-full flex flex-col">
       {/* Header */}
       <div className="px-4 py-3 border-b bg-white sticky top-0 z-10">
-        <h3 className="font-semibold text-lg">Chat Log</h3>
-        <p className="text-xs text-slate-500">{messages.length} messages</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-lg">Chat Log</h3>
+            <p className="text-xs text-slate-500">{messages.length} messages</p>
+          </div>
+          {/* Sub-agent toggle - only show for Claude Code */}
+          {isClaudeCode && (
+            <button
+              onClick={() => setShowSubAgentMessages(!showSubAgentMessages)}
+              className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md border transition-colors ${
+                showSubAgentMessages
+                  ? 'bg-purple-50 border-purple-200 text-purple-700'
+                  : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+              }`}
+              title={showSubAgentMessages ? 'Hide sub-agent messages' : 'Show sub-agent messages'}
+            >
+              {showSubAgentMessages ? (
+                <Eye className="w-3.5 h-3.5" />
+              ) : (
+                <EyeOff className="w-3.5 h-3.5" />
+              )}
+              Sub-agents
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Message List */}
@@ -189,9 +311,15 @@ export function ChatLog() {
         ) : (
           <div className="p-2 space-y-2">
             {messages.map((msg, index) => {
-              const isCurrent = msg.stepIndex === currentStep;
+              // Use effectiveStepIndex for Claude Code (maps main agent step to actual stepIndex)
+              const isCurrent = msg.stepIndex === effectiveStepIndex;
               const isHighlighted = msg.stepIndex === highlightedStepIndex;
-              const isPast = msg.stepIndex <= currentStep;
+              const isPast = msg.stepIndex <= effectiveStepIndex;
+
+              // Get nodeType colors for Claude Code messages
+              const typeColors = msg.nodeType ? nodeTypeColors[msg.nodeType] : null;
+
+              // Fallback to agent-based colors for non-Claude Code
               const senderColor = agentColors.get(msg.sender) || '#64748b';
               const receiverColor = msg.receiver
                 ? agentColors.get(msg.receiver) || '#64748b'
@@ -214,34 +342,43 @@ export function ChatLog() {
                   key={messageId}
                   ref={messageRef}
                   className={`
-                    p-3 rounded-lg border transition-all cursor-pointer select-none
-                    ${isCurrent ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-200 bg-white'}
-                    ${isHighlighted && !isCurrent ? 'border-amber-400 bg-amber-50' : ''}
+                    rounded-lg border-2 transition-all cursor-pointer select-none overflow-hidden bg-white
+                    ${typeColors
+                      ? typeColors.border
+                      : (isCurrent ? 'border-blue-500 shadow-sm' : 'border-slate-200')
+                    }
+                    ${isHighlighted ? 'ring-2 ring-amber-400 ring-offset-1' : ''}
                     ${isAnimating ? 'animate-pulse-highlight' : ''}
                     ${!isPast ? 'opacity-40' : ''}
-                    hover:shadow-md hover:border-blue-300
+                    hover:shadow-md
                     active:scale-[0.98]
                   `}
-                  title="Click to highlight, double-click to update graph"
+                  title={msg.laneId === 'main' || !msg.laneId ? "Click to highlight, double-click to jump to node" : "Click to highlight"}
                   onClick={() => setHighlightedStepIndex(msg.stepIndex)}
-                  onDoubleClick={() => setCurrentStep(msg.stepIndex)}
+                  onDoubleClick={() => {
+                    setHighlightedStepIndex(msg.stepIndex);
+                    // Only jump to node for main agent messages (sub-agents are in modal)
+                    if (msg.laneId === 'main' || !msg.laneId) {
+                      setFocusStepIndex(msg.stepIndex);
+                    }
+                  }}
                 >
-                  {/* Header: Step + Sender -> Receiver */}
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                  {/* Header: Step + Sender -> Receiver (colored background) */}
+                  <div className={`flex items-center gap-2 px-3 py-2 ${typeColors?.bg || (isCurrent ? 'bg-blue-50' : 'bg-slate-50')}`}>
+                    <span className="text-xs font-mono text-slate-500 bg-white/60 px-1.5 py-0.5 rounded">
                       #{msg.stepIndex}
                     </span>
                     <span
-                      className="text-sm font-semibold"
-                      style={{ color: senderColor }}
+                      className={`text-sm font-semibold truncate ${typeColors?.text || ''}`}
+                      style={typeColors ? undefined : { color: senderColor }}
                     >
                       {msg.sender}
                     </span>
                     {msg.receiver && (
                       <>
-                        <ArrowRight className="w-3 h-3 text-slate-400" />
+                        <ArrowRight className="w-3 h-3 text-slate-400 flex-shrink-0" />
                         <span
-                          className="text-sm font-semibold"
+                          className="text-sm font-semibold truncate"
                           style={{ color: receiverColor || undefined }}
                         >
                           {msg.receiver}
@@ -250,12 +387,12 @@ export function ChatLog() {
                     )}
                   </div>
 
-                  {/* Content with expand/collapse */}
-                  <div>
+                  {/* Content with expand/collapse (white background) */}
+                  <div className="px-3 py-2">
                     <div
                       className={`
-                        text-sm text-slate-700 overflow-y-auto
-                        ${isExpanded ? 'max-h-64' : 'line-clamp-2'}
+                        text-sm text-slate-700
+                        ${isExpanded ? 'max-h-64 overflow-y-auto' : 'line-clamp-2 overflow-hidden'}
                       `}
                     >
                       {msg.content}

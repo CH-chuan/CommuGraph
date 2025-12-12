@@ -77,10 +77,7 @@ export class WorkflowGraphBuilder {
     // Step 2: Create nodes from messages
     this.createNodes();
 
-    // Step 3: Create session start node
-    this.createSessionStartNode(parseResult);
-
-    // Step 4: Detect and mark parallel tool call groups
+    // Step 3: Detect and mark parallel tool call groups
     this.detectParallelGroups();
 
     // Step 5: Mark sub-agent container nodes
@@ -148,11 +145,16 @@ export class WorkflowGraphBuilder {
     });
 
     // Sub-agent lanes
-    for (const [agentId, info] of this.subAgents) {
-      this.lanes.set(`agent-${agentId}`, {
-        id: `agent-${agentId}`,
-        label: `Sub-agent: ${info.subagentType || agentId}`,
-        agentId,
+    // Note: subAgents map is keyed by toolUseId, but we need to create lanes
+    // with agentId to match node.laneId (which uses msg.agentId)
+    for (const [toolUseId, info] of this.subAgents) {
+      const actualAgentId = info.agentId || toolUseId;
+      // Use agentId as the lane key to match node.laneId
+      this.lanes.set(`agent-${actualAgentId}`, {
+        id: `agent-${actualAgentId}`,
+        label: `Sub-agent: ${info.subagentType || actualAgentId}`,
+        agentId: actualAgentId,
+        toolUseId: toolUseId,  // Keep toolUseId for reference
         subagentType: info.subagentType,
         prompt: info.prompt,
         totalDurationMs: info.totalDurationMs,
@@ -294,8 +296,17 @@ export class WorkflowGraphBuilder {
     switch (msg.workflowNodeType) {
       case WorkflowNodeType.USER_INPUT:
         return 'User Input';
-      case WorkflowNodeType.AGENT_REASONING:
-        return 'Agent Reasoning';
+      case WorkflowNodeType.AGENT_REASONING: {
+        // Check metadata for content type to provide better label
+        const hasThinking = msg.metadata?.hasThinking;
+        const hasText = msg.metadata?.hasText;
+        if (hasThinking && hasText) {
+          return 'Thinking + Response';
+        } else if (hasText) {
+          return 'Agent Response';
+        }
+        return 'Agent Thinking';
+      }
       case WorkflowNodeType.TOOL_CALL:
         // Special case: Task tool calls are named "call-sub-agent"
         if (msg.toolName === 'Task') {
@@ -480,9 +491,6 @@ export class WorkflowGraphBuilder {
         }
       }
     }
-
-    // Connect session start node to first real node
-    this.connectSessionStartNode(nodeByUuid);
 
     // Create cross-lane edges (Task tool -> sub-agent start, sub-agent end -> task result)
     this.createCrossLaneEdges();

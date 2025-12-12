@@ -11,7 +11,7 @@ export function Header() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">CommuGraph</h1>
           <p className="text-sm text-slate-600">
-            Process Mining for Multi-Agent Interactions
+            Deep Analytics on Multi-Agent Chat Logs
           </p>
         </div>
       </div>

@@ -11,8 +11,11 @@ import { useAppContext } from '@/context/app-context';
 
 export const useTimelinePlayback = () => {
   const [isPlaying, setIsPlaying] = useState(false);
-  const { currentStep, setCurrentStep, totalSteps } = useAppContext();
+  const { currentStep, setCurrentStep, totalSteps, mainAgentStepCount, framework } = useAppContext();
   const intervalRef = useRef<number | null>(null);
+
+  // Use main agent step count for Claude Code, total steps for others
+  const effectiveSteps = framework === 'claudecode' ? mainAgentStepCount : totalSteps;
 
   const play = () => setIsPlaying(true);
   const pause = () => setIsPlaying(false);
@@ -22,10 +25,10 @@ export const useTimelinePlayback = () => {
   };
 
   useEffect(() => {
-    if (isPlaying && currentStep < totalSteps) {
+    if (isPlaying && currentStep < effectiveSteps) {
       intervalRef.current = window.setInterval(() => {
         setCurrentStep((prev: number) => {
-          if (prev >= totalSteps) {
+          if (prev >= effectiveSteps) {
             setIsPlaying(false);
             return prev;
           }
@@ -39,7 +42,7 @@ export const useTimelinePlayback = () => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isPlaying, currentStep, totalSteps, setCurrentStep]);
+  }, [isPlaying, currentStep, effectiveSteps, setCurrentStep]);
 
   return { isPlaying, play, pause, reset };
 };
