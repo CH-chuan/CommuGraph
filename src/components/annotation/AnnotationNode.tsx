@@ -73,11 +73,13 @@ function UserTurnNode({ data, selected }: { data: AnnotationNodeData; selected?:
       <Handle
         type="target"
         position={Position.Top}
+        id="top"
         className="!bg-blue-500 !w-3 !h-3 !border-2 !border-white"
       />
       <Handle
         type="source"
         position={Position.Bottom}
+        id="bottom"
         className="!bg-blue-500 !w-3 !h-3 !border-2 !border-white"
       />
 
@@ -123,30 +125,55 @@ function AssistantTurnNode({ data, selected }: { data: AnnotationNodeData; selec
   const hasText = !!text_or_artifact_ref?.text;
   const hasToolCalls = text_or_artifact_ref?.tool_calls && text_or_artifact_ref.tool_calls.length > 0;
 
+  // When expanded (thinking or tool calls), elevate z-index to appear on top
+  const isExpanded = showThinking || showToolCalls;
+
   return (
     <div
       className={`
         bg-white rounded-lg shadow-md border-2 border-purple-400 min-w-[280px] max-w-[450px]
         ${selected ? 'ring-2 ring-offset-1 ring-purple-500 shadow-lg' : ''}
         ${isHighlighted ? 'ring-2 ring-offset-1 ring-amber-400' : ''}
+        ${isExpanded ? 'shadow-xl' : ''}
       `}
+      style={{ zIndex: isExpanded ? 100 : 1 }}
     >
+      {/* Vertical edges (top/bottom) */}
       <Handle
         type="target"
         position={Position.Top}
+        id="top"
         className="!bg-purple-500 !w-3 !h-3 !border-2 !border-white"
       />
       <Handle
         type="source"
         position={Position.Bottom}
+        id="bottom"
         className="!bg-purple-500 !w-3 !h-3 !border-2 !border-white"
       />
+      {/* Horizontal edges (left/right) for consecutive assistant turns */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="left"
+        className="!bg-purple-400 !w-2.5 !h-2.5 !border-2 !border-white"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="right"
+        className="!bg-purple-400 !w-2.5 !h-2.5 !border-2 !border-white"
+      />
 
-      {/* Header */}
+      {/* Header - includes tool names if present */}
       <div className="flex items-center gap-2 px-3 py-2 bg-purple-100 rounded-t-md">
-        <Brain className="w-4 h-4 text-purple-600" />
-        <span className="text-sm font-semibold text-purple-700">Assistant Turn</span>
-        <span className="ml-auto text-xs text-slate-500">#{sequenceIndex}</span>
+        <Brain className="w-4 h-4 text-purple-600 flex-shrink-0" />
+        <span className="text-sm font-semibold text-purple-700 truncate">
+          {hasToolCalls
+            ? `Assistant Turn - ${text_or_artifact_ref.tool_calls!.map(tc => tc.tool_name).join(', ')}`
+            : 'Assistant Turn'}
+        </span>
+        <span className="ml-auto text-xs text-slate-500 flex-shrink-0">#{sequenceIndex}</span>
       </div>
 
       {/* Thinking Block (collapsible) */}
@@ -193,7 +220,7 @@ function AssistantTurnNode({ data, selected }: { data: AnnotationNodeData; selec
             </span>
           </button>
           {showToolCalls && (
-            <div className="px-3 py-2 bg-emerald-50 space-y-2">
+            <div className="px-3 py-2 bg-emerald-50 space-y-2 max-h-60 overflow-y-auto">
               {text_or_artifact_ref.tool_calls!.map((tool, idx) => (
                 <div key={tool.tool_use_id || idx} className="text-xs">
                   <div className="flex items-center gap-2 font-medium text-emerald-700">
@@ -202,8 +229,8 @@ function AssistantTurnNode({ data, selected }: { data: AnnotationNodeData; selec
                       <span className="text-red-500">(error)</span>
                     )}
                   </div>
-                  <pre className="mt-1 p-1 bg-white rounded text-slate-600 overflow-x-auto max-h-20">
-                    {JSON.stringify(tool.input, null, 2).slice(0, 200)}
+                  <pre className="mt-1 p-1 bg-white rounded text-slate-600 overflow-x-auto max-h-24 overflow-y-auto">
+                    {JSON.stringify(tool.input, null, 2).slice(0, 500)}
                   </pre>
                 </div>
               ))}

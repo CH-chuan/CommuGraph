@@ -1,6 +1,6 @@
 # CommuGraph User Interactions Reference
 
-**Last Updated**: 2025-12-11
+**Last Updated**: 2025-12-12
 
 This document describes all supported user interactions in the CommuGraph visualization interface.
 
@@ -11,10 +11,11 @@ This document describes all supported user interactions in the CommuGraph visual
 1. [File Upload](#file-upload)
 2. [Graph View (Center Panel)](#graph-view-center-panel)
 3. [Claude Code Workflow View](#claude-code-workflow-view)
-4. [Chat Log (Left Panel)](#chat-log-left-panel)
-5. [Timeline Controls (Bottom)](#timeline-controls-bottom)
-6. [Gantt Chart Timeline](#gantt-chart-timeline)
-7. [Cross-Component Synchronization](#cross-component-synchronization)
+4. [Annotation View (Claude Code)](#annotation-view-claude-code)
+5. [Chat Log (Left Panel)](#chat-log-left-panel)
+6. [Timeline Controls (Bottom)](#timeline-controls-bottom)
+7. [Gantt Chart Timeline](#gantt-chart-timeline)
+8. [Cross-Component Synchronization](#cross-component-synchronization)
 
 ---
 
@@ -288,6 +289,161 @@ Displays session-level analytics for Claude Code logs.
 
 ---
 
+## Annotation View (Claude Code)
+
+The Annotation View provides a sequence-based visualization for Claude Code logs, optimized for labeling and annotation workflows. Instead of a workflow DAG, it presents a linear conversation flow with expandable content sections.
+
+### Layout Overview
+
+```
+┌───────────┬─────────────────────────────────┬──────────────┐
+│   Chat    │        Annotation View          │   Metrics    │
+│   Log     │   (Vertical Sequence Layout)    │  Dashboard   │
+│           │                                 │              │
+└───────────┴─────────────────────────────────┴──────────────┘
+```
+
+### Layout Algorithm
+
+**Row Grouping:**
+- **User turns**: Always in their own row (single centered node)
+- **Consecutive assistant turns**: Grouped horizontally in the same row (left to right)
+
+**Edge Patterns:**
+- **Vertical edges**: Connect first node of each row to next row (main conversation flow)
+- **Horizontal edges** (dashed purple): Connect consecutive assistant turns within a row
+
+```
+       [User Prompt]          ← Single node, centered
+              │
+              ↓
+  [Assist 1]──[Assist 2]──[Assist 3]   ← Horizontal row of consecutive turns
+              │                         ← Rightmost connects to next
+              ↓
+       [User Prompt]
+```
+
+---
+
+### Annotation Nodes
+
+**Node Types:**
+
+| Type | Theme | Icon | Description |
+|------|-------|------|-------------|
+| **User Turn** | Blue border (#3B82F6) | User | User's prompt or input |
+| **Assistant Turn** | Purple border (#8B5CF6) | Brain | Claude's response with thinking/text/tools |
+
+**User Turn Node Content:**
+- Header: "User Prompt" with sequence number
+- Prompt text (truncated to 300 chars, 4 lines max)
+- Timestamp (if available)
+- Label slot (for annotations)
+
+**Assistant Turn Node Content:**
+- Header: "Assistant Turn" with tool names if present
+- **Thinking** (collapsible): Expandable section showing Claude's thinking
+- **Text Response**: Main response text (truncated to 400 chars)
+- **Tool Calls** (collapsible): Expandable list of tool invocations with inputs
+- **Tool Summary**: Quick stats when tool calls collapsed (success/error counts)
+- Timestamp (if available)
+- Label slot (for annotations)
+
+---
+
+### Collapsible Sections
+
+**Thinking Section:**
+
+| State | Visual |
+|-------|--------|
+| **Collapsed** | "Thinking (N chars)" with chevron |
+| **Expanded** | Gray background, monospace font, max 160px height with scroll |
+
+**Tool Calls Section:**
+
+| State | Visual |
+|-------|--------|
+| **Collapsed** | "N Tool Call(s)" with wrench icon |
+| **Expanded** | Green background, tool names + JSON inputs, max 240px height with scroll |
+
+**Interactions:**
+
+| Action | Behavior |
+|--------|----------|
+| **Click "Thinking"** | Toggles thinking content visibility |
+| **Click "Tool Calls"** | Toggles tool calls list visibility |
+| **Expand any section** | Node elevates (z-index 100) to appear above overlapping nodes |
+
+---
+
+### Label Slots
+
+Each node has a label slot at the bottom for annotation labels.
+
+**Empty State:**
+- Gray background with tag icon
+- Text: "No labels (click to annotate)"
+
+**With Labels:**
+- Pills showing label IDs with confidence percentages
+- Indigo color scheme
+
+---
+
+### Interactions
+
+| Action | Behavior | Visual Feedback |
+|--------|----------|-----------------|
+| **Single Click Node** | Triggers onNodeClick callback (scrolls chat log) | Node highlighted with amber ring |
+| **Double Click Node** | Centers view on node + triggers callback | Smooth animation to node center |
+| **Pan/Zoom** | Standard React Flow controls | - |
+| **Fit View** | Centers all nodes (0.2 padding, 0.3 min zoom) | - |
+| **Drag Scrollbar** | Vertical scrollbar synced with viewport | Thumb position updates |
+| **Click Scrollbar Track** | Jumps to that scroll position | Viewport pans |
+
+---
+
+### Visual States
+
+**Node States:**
+- **Normal**: Standard shadow, default z-index
+- **Selected**: Ring with blue (user) or purple (assistant) color
+- **Highlighted**: Amber ring (`ring-amber-400`)
+- **Expanded**: Elevated shadow (`shadow-xl`), z-index 100
+
+**Edge Styles:**
+- **Vertical edges**: Solid gray (#94a3b8), 2px, smoothstep
+- **Horizontal edges**: Dashed purple (#a78bfa), 2px, straight
+
+---
+
+### Custom Scrollbar
+
+The Annotation View includes a custom vertical scrollbar that syncs with the React Flow viewport.
+
+**Visual Elements:**
+- Right-side scrollbar track (16px width)
+- Draggable thumb (size proportional to visible content)
+
+**Behavior:**
+- Tracks viewport position automatically
+- Click track to jump to position
+- Drag thumb to scroll
+- Resizes based on zoom level
+
+---
+
+### MiniMap
+
+**Position**: Bottom-left corner
+
+**Node Colors:**
+- User turns: Blue (#3B82F6)
+- Assistant turns: Purple (#8B5CF6)
+
+---
+
 ## Chat Log (Left Panel)
 
 ### Message Cards
@@ -509,6 +665,26 @@ All components share a global "current step" state managed by React Context. Her
 | **Workflow Graph** | Filters to that step, node highlighted in blue |
 | **Chat Log** | Scrolls to corresponding message |
 | **Timeline Slider** | Moves to that step |
+
+---
+
+### Annotation View Navigation (Claude Code)
+
+**Action**: User single-clicks on an annotation node
+
+| Component | Automatic Update |
+|-----------|------------------|
+| **Annotation View** | Node highlighted with amber ring |
+| **Chat Log** | Scrolls to corresponding message |
+| *(Other components)* | No change |
+
+**Action**: User double-clicks on an annotation node
+
+| Component | Automatic Update |
+|-----------|------------------|
+| **Annotation View** | Centers view on node with smooth animation (zoom 0.8, 500ms) |
+| **Chat Log** | Scrolls to corresponding message |
+| *(Other components)* | Focus cleared after centering |
 
 ---
 

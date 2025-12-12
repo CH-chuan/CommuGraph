@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CommuGraph
+
+A process mining and analytics tool for multi-agent chat logs. CommuGraph transforms complex multi-agent conversations into interactive graph visualizations with temporal analysis capabilities.
+
+## Features
+
+- **Upload & Parse**: Import JSONL/JSON chat log files from various multi-agent frameworks
+- **Temporal Graph Visualization**: Interactive node-link diagrams with time-aware edges
+- **Rich Card Nodes**: Role-based icons, status indicators, and agent color coding
+- **Ghost Trail Edges**: Temporal edge states (Current/Recent/History) with smart routing
+- **Gantt Timeline**: Agent activity tracks with play/pause animation
+- **Chat Log View**: Message list with cross-highlighting to graph elements
+- **Edge Focus Mode**: Isolate and inspect specific agent interactions
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| Framework | Next.js 15 (App Router) |
+| Language | TypeScript |
+| Graph Visualization | React Flow (@xyflow/react) |
+| State Management | TanStack Query + React Context |
+| Validation | Zod |
+| Styling | Tailwind CSS |
+| UI Components | shadcn/ui (Radix-based) |
+| Graph Algorithms | Custom DiGraph implementation |
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+
+- npm
+
+### Installation
+
+```bash
+npm install
+```
+
+### Development
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Production Build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+npm start
+```
 
-## Learn More
+### Code Quality
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run lint       # ESLint
+npm run build      # TypeScript type checking
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## API Endpoints
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/upload` | POST | Upload JSONL/JSON file |
+| `/api/frameworks` | GET | List supported parsers |
+| `/api/sessions` | GET | List all sessions |
+| `/api/graph/[id]` | GET | Get graph snapshot (optional `?step=N`) |
+| `/api/graph/[id]/metrics` | GET | Get graph metrics |
+| `/api/graph/[id]/info` | GET | Get session info |
+| `/api/session/[id]` | DELETE | Delete session |
 
-## Deploy on Vercel
+## Architecture
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+CommuGraph is a unified **Next.js 15 monolith** with all frontend and backend logic in TypeScript. The core innovation is **time-aware edges** - unlike traditional static graphs, edges store interaction objects with timestamps and step indices, enabling temporal playback and pattern detection.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+src/
+├── app/           # Next.js App Router + API Routes
+├── components/    # React components (graph, chat, upload, ui)
+├── lib/           # Backend logic (parsers, services, graph algorithms)
+├── hooks/         # React hooks (data fetching, timeline playback)
+├── context/       # Global UI state
+├── types/         # TypeScript type definitions
+└── utils/         # Helpers and adapters
+```
+
+## Supported Frameworks
+
+- AutoGen (JSONL/JSON)
+- Claude Code (conversation logs)
+- More parsers can be added via the parser registry
+
+## License
+
+MIT

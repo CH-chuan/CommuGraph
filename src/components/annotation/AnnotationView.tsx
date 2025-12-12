@@ -34,9 +34,10 @@ import type { AnnotationRecord } from '@/lib/annotation/types';
 // Layout configuration
 const LAYOUT_CONFIG = {
   nodeWidth: 400,
-  nodeSpacing: 120, // Vertical space between nodes
+  nodeSpacing: 120,       // Vertical space between rows
+  horizontalSpacing: 50,  // Horizontal space between consecutive assistant turns
   startY: 50,
-  centerX: 200,
+  startX: 600,            // Base X position (allows horizontal expansion to both sides)
 };
 
 interface AnnotationViewProps {
@@ -48,7 +49,23 @@ interface AnnotationViewProps {
 }
 
 /**
+ * Row type for grouping annotations
+ * - User turns are always in their own row
+ * - Consecutive assistant turns are grouped in a horizontal row
+ */
+interface LayoutRow {
+  records: AnnotationRecord[];
+  indices: number[];
+}
+
+/**
  * Convert annotation records to React Flow nodes and edges
+ *
+ * Layout algorithm:
+ * - User turns: single node, centered
+ * - Consecutive assistant turns: laid out horizontally (left to right)
+ * - Vertical edges connect first node in each row (main flow on left)
+ * - Horizontal edges connect consecutive assistant turns within a row
  */
 function convertToReactFlow(
   annotations: AnnotationRecord[],
@@ -57,36 +74,99 @@ function convertToReactFlow(
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  let currentY = LAYOUT_CONFIG.startY;
+  // Group annotations into rows
+  const rows: LayoutRow[] = [];
+  let assistantRow: LayoutRow = { records: [], indices: [] };
 
   annotations.forEach((record, index) => {
-    const nodeData: AnnotationNodeData = {
-      record,
-      sequenceIndex: index + 1,
-      isHighlighted: highlightedIndex === index,
-    };
+    if (record.unit_type === 'user_turn') {
+      // User turn always starts a new row (by itself)
+      // First, push any pending assistant row
+      if (assistantRow.records.length > 0) {
+        rows.push(assistantRow);
+        assistantRow = { records: [], indices: [] };
+      }
+      rows.push({ records: [record], indices: [index] });
+    } else {
+      // Assistant turn - group consecutive ones
+      assistantRow.records.push(record);
+      assistantRow.indices.push(index);
+    }
+  });
+  // Don't forget the last assistant row if it exists
+  if (assistantRow.records.length > 0) {
+    rows.push(assistantRow);
+  }
 
-    // Estimate node height based on content
-    const estimatedHeight = estimateNodeHeight(record);
+  // Layout rows
+  let currentY = LAYOUT_CONFIG.startY;
 
-    nodes.push({
-      id: record.event_id,
-      type: 'annotation',
-      position: { x: LAYOUT_CONFIG.centerX, y: currentY },
-      sourcePosition: Position.Bottom,
-      targetPosition: Position.Top,
-      data: nodeData as unknown as Record<string, unknown>,
-      style: {
-        width: LAYOUT_CONFIG.nodeWidth,
-      },
+  rows.forEach((row, rowIndex) => {
+    const rowHeight = Math.max(...row.records.map(r => estimateNodeHeight(r)));
+    const nodeCount = row.records.length;
+
+    // Calculate starting X for this row (center the group)
+    const totalWidth = nodeCount * LAYOUT_CONFIG.nodeWidth +
+                       (nodeCount - 1) * LAYOUT_CONFIG.horizontalSpacing;
+    const rowStartX = LAYOUT_CONFIG.startX - totalWidth / 2 + LAYOUT_CONFIG.nodeWidth / 2;
+
+    row.records.forEach((record, nodeIndexInRow) => {
+      const globalIndex = row.indices[nodeIndexInRow];
+      const x = rowStartX + nodeIndexInRow * (LAYOUT_CONFIG.nodeWidth + LAYOUT_CONFIG.horizontalSpacing);
+
+      const nodeData: AnnotationNodeData = {
+        record,
+        sequenceIndex: globalIndex + 1,
+        isHighlighted: highlightedIndex === globalIndex,
+      };
+
+      nodes.push({
+        id: record.event_id,
+        type: 'annotation',
+        position: { x, y: currentY },
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+        data: nodeData as unknown as Record<string, unknown>,
+        style: {
+          width: LAYOUT_CONFIG.nodeWidth,
+        },
+      });
+
+      // Horizontal edge to next node in same row (for consecutive assistant turns)
+      if (nodeIndexInRow < row.records.length - 1) {
+        edges.push({
+          id: `edge-h-${rowIndex}-${nodeIndexInRow}`,
+          source: record.event_id,
+          target: row.records[nodeIndexInRow + 1].event_id,
+          sourceHandle: 'right',
+          targetHandle: 'left',
+          type: 'straight',
+          style: {
+            stroke: '#a78bfa', // Purple to match assistant theme
+            strokeWidth: 2,
+            strokeDasharray: '5,5', // Dashed line for horizontal flow
+          },
+          animated: false,
+        });
+      }
     });
 
-    // Create edge to next node
-    if (index < annotations.length - 1) {
+    // Vertical edge to next row
+    // - If current row is user_turn: connect to FIRST (leftmost) node in next row
+    // - If current row is assistant_turn(s): connect LAST (rightmost) node to next row's first
+    if (rowIndex < rows.length - 1) {
+      const isCurrentRowUser = row.records[0].unit_type === 'user_turn';
+      const sourceNode = isCurrentRowUser
+        ? row.records[0]  // User connects from itself
+        : row.records[row.records.length - 1];  // Assistant row: rightmost connects out
+      const targetNode = rows[rowIndex + 1].records[0];  // Always connect to first/leftmost of next row
+
       edges.push({
-        id: `edge-${index}`,
-        source: record.event_id,
-        target: annotations[index + 1].event_id,
+        id: `edge-v-${rowIndex}`,
+        source: sourceNode.event_id,
+        target: targetNode.event_id,
+        sourceHandle: 'bottom',
+        targetHandle: 'top',
         type: 'smoothstep',
         style: {
           stroke: '#94a3b8',
@@ -96,7 +176,7 @@ function convertToReactFlow(
       });
     }
 
-    currentY += estimatedHeight + LAYOUT_CONFIG.nodeSpacing;
+    currentY += rowHeight + LAYOUT_CONFIG.nodeSpacing;
   });
 
   return { nodes, edges, totalHeight: currentY };

@@ -353,17 +353,33 @@ export class ClaudeCodeParser extends BaseParser {
     const otherRecords: RawLogRecord[] = [];
     const subAgents = new Map<string, SubAgentInfo>();
 
+    // Map tool_use_id -> subagent_type for Task tool calls
+    const taskToolSubagentTypes = new Map<string, string>();
+
     // Detect sessionId from first record if not provided
     if (!sessionId && records.length > 0) {
       sessionId = records[0].sessionId;
     }
 
-    // First pass: categorize records
+    // First pass: categorize records and extract Task tool subagent_type
     for (const record of records) {
       if (record.type === 'assistant' && record.requestId) {
         const existing = assistantRecordsByRequest.get(record.requestId) || [];
         existing.push(record);
         assistantRecordsByRequest.set(record.requestId, existing);
+
+        // Extract subagent_type from Task tool calls
+        const msg = record.message as AssistantMessage | undefined;
+        if (msg?.content) {
+          for (const content of msg.content) {
+            if (content.type === 'tool_use' && content.name === 'Task') {
+              const input = content.input as { subagent_type?: string };
+              if (input.subagent_type) {
+                taskToolSubagentTypes.set(content.id, input.subagent_type);
+              }
+            }
+          }
+        }
       } else if (
         record.type === 'user' ||
         record.type === 'system'
@@ -415,7 +431,7 @@ export class ClaudeCodeParser extends BaseParser {
         stepIndex += newMessages.length;
       } else {
         const record = item.data;
-        const newMessages = this.convertRawRecord(record, stepIndex, subAgents);
+        const newMessages = this.convertRawRecord(record, stepIndex, subAgents, taskToolSubagentTypes);
         messages.push(...newMessages);
         stepIndex += newMessages.length;
       }
@@ -599,7 +615,8 @@ export class ClaudeCodeParser extends BaseParser {
   private convertRawRecord(
     record: RawLogRecord,
     startStepIndex: number,
-    subAgents: Map<string, SubAgentInfo>
+    subAgents: Map<string, SubAgentInfo>,
+    taskToolSubagentTypes: Map<string, string>
   ): ClaudeCodeMessage[] {
     const messages: ClaudeCodeMessage[] = [];
 
@@ -627,9 +644,13 @@ export class ClaudeCodeParser extends BaseParser {
         const result = record.toolUseResult;
         const agentId = result.agentId;
         if (agentId && toolUseIdFromResult) {
+          // Look up subagent_type from the Task tool call that triggered this sub-agent
+          const subagentType = taskToolSubagentTypes.get(toolUseIdFromResult);
+
           subAgents.set(toolUseIdFromResult, {  // Key by tool_use_id, not agentId
             agentId,
             toolUseId: toolUseIdFromResult,
+            subagentType,  // Now populated from Task tool call input
             prompt: result.prompt || '',
             totalDurationMs: result.totalDurationMs,
             totalTokens: result.totalTokens,
