@@ -148,39 +148,33 @@ When a Claude Code log is uploaded, CommuGraph displays a specialized **Workflow
 ```
 ┌───────────┬─────────────────────────────────┬──────────────┐
 │   Chat    │         Workflow Graph          │   Metrics    │
-│   Log     │  (Time Axis + Lanes + Nodes)    │  Dashboard   │
+│   Log     │      (Tree Layout DAG)          │  Dashboard   │
 │           │                                 │              │
 └───────────┴─────────────────────────────────┴──────────────┘
 ```
 
-### Time Axis (Left Edge)
+### Workflow Graph Layout
 
 **Visual Elements:**
-- Vertical time ruler showing elapsed time from session start
-- Tick marks at regular intervals (format: `0s`, `1:30`, `5:00`)
-- Blue horizontal line indicating current step
-- Blue dot indicator at current position
+- Tree-based vertical DAG layout (grows top-to-bottom)
+- Session start node at top with metadata
+- Parallel tool calls spread horizontally (fork pattern)
+- Results converge to next reasoning node (join pattern)
+- No lane headers - sub-agents shown as special Task tool call cards
 
-**Interactions:**
-
-| Action | Behavior |
-|--------|----------|
-| **Click tick** | Jump to the node closest to that timestamp |
-| **Visual only** | Current step indicator updates with navigation |
-
----
-
-### Lane Headers (Top)
-
-**Visual Elements:**
-- One lane per agent (main agent + sub-agents)
-- **Main agent lane**: Blue background with User icon
-- **Sub-agent lanes**: Purple background with Bot icon
-- Lane metadata: tokens, duration, tool count, status badge
-
-**Lane Status Badges:**
-- **completed**: Green badge
-- **failed**: Red badge
+**Fork/Join Pattern:**
+```
+         [Agent Reasoning]
+                │
+    ┌───────────┼───────────┐     Fork: parallel tool calls
+    ↓           ↓           ↓
+ [Read]      [Bash]      [Grep]
+    ↓           ↓           ↓
+ [Result]   [Result]    [Result]
+    └───────────┼───────────┘     Join: all results connect
+                ↓
+         [Agent Reasoning]
+```
 
 ---
 
@@ -194,11 +188,12 @@ Nodes represent discrete activities in the Claude Code session.
 |------|-------|------|-------------|
 | **User Input** | Blue (#3B82F6) | User | User's prompt or follow-up |
 | **Tool Result** | Teal (#14B8A6) | Terminal | Result from tool execution |
-| **System Notice** | Slate (#64748B) | Info | System messages |
+| **System Notice** | Slate (#64748B) | Gear | System messages |
 | **Agent Reasoning** | Purple (#8B5CF6) | Brain | LLM thinking/response |
-| **Tool Call** | Green (#10B981) | Wrench | Tool invocation |
-| **Result Success** | Emerald (#22C55E) | Check | Successful operation (compact) |
-| **Result Failure** | Red (#EF4444) | X | Failed operation (compact) |
+| **Tool Call** | Emerald (#10B981) | Tool-specific | Tool invocation |
+| **Sub-Agent Call** | Purple (#8B5CF6) | Rocket | Task tool with sub-agent info |
+| **Result Success** | Green (#22C55E) | Check | Successful operation with preview |
+| **Result Failure** | Red (#EF4444) | X | Failed operation with error preview |
 
 **Node Content:**
 - Label (truncated)
@@ -206,16 +201,26 @@ Nodes represent discrete activities in the Claude Code session.
 - Tool name badge (for tool calls)
 - Duration badge (when available)
 - Token count (input/output)
+- Parallel indicator (e.g., "Parallel 1/3")
+
+**Sub-Agent Tool Call Cards:**
+- Purple themed card for Task tool calls
+- Shows sub-agent type (e.g., "Explore Agent")
+- Prompt preview
+- Metrics: duration, tokens, tool count
+- Status indicator (completed/failed)
+- "Open" button for sub-agent modal
 
 **Interactions:**
 
-| Action | Behavior |
-|--------|----------|
-| **Hover** | Highlights node, shows step in timeline |
-| **Click** | Sets current step, highlights in chat log |
+| Action | Behavior | Visual Feedback |
+|--------|----------|-----------------|
+| **Single Click** | Scrolls chat log to message, highlights node | Chat log scrolls + pulse animation |
+| **Double Click** | Updates graph to that step, scrolls chat log | Graph filters to step, message highlighted |
 
 **Visual States:**
-- **Current/Highlighted**: Blue ring, elevated shadow
+- **Current Step**: Blue ring, elevated shadow
+- **Highlighted** (from click): Amber ring
 - **Normal**: Standard shadow
 
 ---
@@ -273,11 +278,13 @@ Displays session-level analytics for Claude Code logs.
 
 | Action | Effect |
 |--------|--------|
-| **Node click** | Updates current step, scrolls chat log |
-| **Node hover** | Temporarily highlights step across views |
-| **Time axis click** | Jumps to nearest timestamp |
+| **Single Click Node** | Scrolls chat log to corresponding message + pulse animation (no graph change) |
+| **Double Click Node** | Updates graph to that step + scrolls chat log |
+| **Click Sub-Agent "Open"** | Opens modal showing sub-agent workflow details |
 | **Pan/Zoom** | Standard React Flow controls |
 | **Fit View** | Centers all workflow nodes |
+
+**Note**: Hover interactions have been removed for simplicity. All interactions are click-based.
 
 ---
 
@@ -297,17 +304,25 @@ Displays session-level analytics for Claude Code logs.
 
 | Action | Behavior | Visual Feedback |
 |--------|----------|-----------------|
-| **Hover** | Highlights sender agent in graph + Gantt timeline | Card shadow increases, border turns blue |
-| **Single Click** | Navigates timeline to that step | Card border turns blue (current step) |
-| **Double Click** | Jumps to step + highlights sender for 2 seconds | Sender gets colored ring in graph |
+| **Single Click** | Highlights message + highlights corresponding node in graph (if visible) | Card border turns amber, graph node highlighted |
+| **Double Click** | Updates graph to that step | Card border turns blue (current step), graph filters to step |
 | **Click "Show more"** | Expands message (max 256px height with scroll) | Content expands, button changes to "Show less" |
 | **Click "Show less"** | Collapses message to 2 lines | Content collapses, button changes to "Show more" |
+| **Manual Scroll** | Standard scrolling behavior | No automatic effects |
+
+**Note**: Hover interactions have been removed. Auto-scroll only occurs when clicking nodes in the graph.
 
 **Visual States:**
 - **Current step**: Blue border (`border-blue-500`), blue background (`bg-blue-50`)
-- **Highlighted** (from hover/timeline): Amber border (`border-amber-400`), amber background (`bg-amber-50`)
+- **Highlighted** (from single click or graph node click): Amber border (`border-amber-400`), amber background (`bg-amber-50`), pulse animation
 - **Future step**: 40% opacity (dimmed)
 - **Past step**: 100% opacity (normal)
+
+**Pulse Animation:**
+- Triggered when scrolling to message from graph node click
+- Animation plays AFTER scroll completes (uses IntersectionObserver for detection)
+- 800ms amber glow + scale effect
+- Helps user identify which message corresponds to the clicked graph node
 
 **Message Expansion:**
 - Triggered for messages with >80 characters OR containing line breaks (`\n`)
@@ -424,21 +439,23 @@ All components share a global "current step" state managed by React Context. Her
 
 ### Chat Log Navigation
 
-**Action**: User clicks message card for step 15
+**Action**: User single-clicks message card for step 15
+
+| Component | Automatic Update |
+|-----------|------------------|
+| **Chat Log** | Message highlighted in amber |
+| **Graph View** | Corresponding node highlighted in amber (if visible in current step) |
+| **Timeline Slider** | No change |
+| **Gantt Timeline** | No change |
+
+**Action**: User double-clicks message card for step 15
 
 | Component | Automatic Update |
 |-----------|------------------|
 | **Timeline Slider** | Moves to position 15 |
-| **Graph View** | Filters to step 15 |
+| **Graph View** | Filters to step 15, node highlighted in blue |
 | **Gantt Timeline** | Blue line moves to step 15 |
-| **Chat Log** | Scrolls message into view, highlights in blue |
-
-**Action**: User double-clicks message from agent "Coder"
-
-| Component | Automatic Update |
-|-----------|------------------|
-| *(All above)* | Same as single-click |
-| **Graph View (additional)** | "Coder" node gets colored ring highlight for 2 seconds |
+| **Chat Log** | Message highlighted in blue (current step) |
 
 ---
 
@@ -453,16 +470,9 @@ All components share a global "current step" state managed by React Context. Her
 | **Chat Log** | Scrolls to message #30 |
 | **Gantt Timeline** | Blue line moves to step 30 |
 
-**Action**: User hovers over "Manager" track label
-
-| Component | Automatic Update |
-|-----------|------------------|
-| **Graph View** | "Manager" node gets colored ring highlight |
-| **Gantt Timeline** | Track shows hover state |
-
 ---
 
-### Graph View Selection
+### Graph View Selection (AutoGen)
 
 **Action**: User clicks on "Coder" node
 
@@ -477,8 +487,28 @@ All components share a global "current step" state managed by React Context. Her
 |-----------|------------------|
 | **Graph View** | "Manager" node's outgoing edges highlighted in emerald green (5px, animated dash), all other edges dimmed to 15% opacity |
 | **Edge Labels** | Focused edges show bold interaction count badges with emerald background (e.g., "3", "7") |
-| **Unfocus** | Double-click "Manager" again to remove focus, OR perform any other action (timeline scrub, chat click, hover, etc.) |
+| **Unfocus** | Double-click "Manager" again to remove focus, OR perform any other action (timeline scrub, chat click, etc.) |
 | *(Other components)* | No change (focus is graph-only) |
+
+---
+
+### Workflow View Navigation (Claude Code)
+
+**Action**: User single-clicks on a workflow node
+
+| Component | Automatic Update |
+|-----------|------------------|
+| **Workflow Graph** | Node highlighted in amber |
+| **Chat Log** | Scrolls to corresponding message, pulse animation after scroll completes |
+| **Timeline Slider** | No change |
+
+**Action**: User double-clicks on a workflow node
+
+| Component | Automatic Update |
+|-----------|------------------|
+| **Workflow Graph** | Filters to that step, node highlighted in blue |
+| **Chat Log** | Scrolls to corresponding message |
+| **Timeline Slider** | Moves to that step |
 
 ---
 
@@ -487,22 +517,30 @@ All components share a global "current step" state managed by React Context. Her
 CommuGraph uses a two-level highlighting system:
 
 ### 1. Current Step Highlighting (Blue)
-- **Trigger**: Timeline scrubbing, chat log click, Gantt block click
+- **Trigger**: Timeline scrubbing, double-click on chat message or graph node, Gantt block click
 - **Affected Components**: All components
 - **Duration**: Persistent until step changes
 - **Color**: Blue (`blue-500`)
+- **Effect**: Updates graph to show only nodes up to this step
 
-### 2. Hover Highlighting (Amber/Agent Color)
-- **Trigger**: Hover over chat message, hover over Gantt agent label
-- **Affected Components**: Graph view, source component
-- **Duration**: Only while hovering
-- **Color**: Amber (`amber-400`) for general, agent color for specific highlights
+### 2. Highlighted Step (Amber)
+- **Trigger**: Single click on chat message or graph node
+- **Affected Components**: Chat log + graph (cross-highlighting)
+- **Duration**: Persistent until another element is clicked
+- **Color**: Amber (`amber-400`)
+- **Effect**:
+  - In Chat Log: Amber border + pulse animation (after scroll completes)
+  - In Graph: Amber ring around corresponding node (if visible)
+- **Note**: Does NOT change graph step - only highlights for visibility
 
-### 3. Double-Click Highlighting (Agent Color Ring)
-- **Trigger**: Double-click chat message
-- **Affected Components**: Graph view (sender node)
-- **Duration**: 2 seconds, then auto-clears
-- **Color**: Agent's color as ring around node
+### Interaction Summary
+
+| Action | Chat Log | Graph | Graph Step |
+|--------|----------|-------|------------|
+| Single click node | Scroll + highlight + pulse | Amber ring | No change |
+| Double click node | Scroll + highlight | Blue ring | Updated |
+| Single click message | Amber highlight | Amber ring (if visible) | No change |
+| Double click message | Blue highlight | Blue ring | Updated |
 
 ---
 
@@ -512,10 +550,27 @@ CommuGraph uses a two-level highlighting system:
 |---------|-----------|----------|---------|
 | **Ghost Trail current edge** | Dashed line flow | 1s loop | Shows active communication |
 | **Message card highlight** | Border color transition | 200ms | Smooth state changes |
+| **Message pulse (graph click)** | Amber glow + scale | 800ms | Identifies clicked node's message |
 | **Node highlight ring** | Fade in/out | 200ms | Smooth appearance |
-| **Chat log scroll** | Smooth scroll | Auto | Auto-scroll to current message |
+| **Chat log scroll** | Smooth scroll | Auto | Auto-scroll to message (from graph click) |
 | **Gantt block opacity** | Opacity transition | 200ms | Past/future distinction |
 | **Timeline playback** | Linear step progression | 1s per step | Animated playback |
+
+### Pulse Animation Details
+
+The chat log pulse animation (`animate-pulse-highlight`) is triggered when:
+1. User clicks a node in the workflow graph
+2. Chat log scrolls to the corresponding message
+3. IntersectionObserver detects the message is visible (50% threshold)
+4. Animation plays: amber box-shadow expands/contracts with subtle scale
+
+```css
+@keyframes pulse-highlight {
+  0% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.7); transform: scale(1); }
+  50% { box-shadow: 0 0 0 12px rgba(251, 191, 36, 0.2); transform: scale(1.01); }
+  100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0); transform: scale(1); }
+}
+```
 
 ---
 

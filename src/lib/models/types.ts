@@ -269,7 +269,6 @@ export interface WorkflowNode {
 
   // Sub-agent container fields
   isSubAgentContainer?: boolean; // True for Task tool calls with sub-agents
-  isSubAgentCard?: boolean; // True for interactive sub-agent card nodes
   subAgentInfo?: SubAgentInfo;
 
   // Parallel execution tracking

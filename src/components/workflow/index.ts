@@ -7,7 +7,6 @@ export { WorkflowViewWrapper } from './WorkflowViewWrapper';
 export { WorkflowNode, workflowNodeTypes } from './WorkflowNode';
 export { WorkflowEdge, workflowEdgeTypes } from './WorkflowEdge';
 export { SessionStartNode } from './SessionStartNode';
-export { SubAgentCard } from './SubAgentCard';
 export { SubAgentModal } from './SubAgentModal';
 export { MetricsDashboard } from './MetricsDashboard';
 export { WorkflowTimelineControls } from './WorkflowTimelineControls';

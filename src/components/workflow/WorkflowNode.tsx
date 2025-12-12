@@ -64,7 +64,6 @@ export interface WorkflowNodeData {
 
   // Sub-agent container fields
   isSubAgentContainer?: boolean;
-  isSubAgentCard?: boolean; // Interactive sub-agent card node
   subAgentInfo?: SubAgentInfo;
 
   // Session start fields
@@ -183,16 +182,18 @@ function formatTokens(tokens?: number): string {
 }
 
 /**
- * Sub-Agent Card Component - Interactive card for sub-agent execution
+ * Sub-Agent Tool Call Component - Task tool call with sub-agent info inline
  *
- * This is a distinct card representing a running sub-agent instance.
- * Clicking expands to show the full sub-agent workflow in a modal.
+ * Renders like a regular tool call card but with purple theme and sub-agent
+ * metadata (type, prompt preview, metrics). Includes "Open" button to expand
+ * sub-agent workflow in modal.
  */
-function SubAgentCardComponent({ data, selected }: { data: WorkflowNodeData; selected?: boolean }) {
+function SubAgentToolCallComponent({ data, selected }: { data: WorkflowNodeData; selected?: boolean }) {
   const nodeData = data;
   const { subAgentInfo } = nodeData;
 
   if (!subAgentInfo) {
+    // Fallback to regular tool call rendering - shouldn't happen
     return null;
   }
 
@@ -205,12 +206,10 @@ function SubAgentCardComponent({ data, selected }: { data: WorkflowNodeData; sel
   return (
     <div
       className={`
-        bg-white rounded-lg shadow-lg border-2 border-purple-400 min-w-[280px] max-w-[320px]
-        ${selected ? 'ring-2 ring-offset-2 ring-purple-500 shadow-xl' : ''}
+        bg-white rounded-lg shadow-md border-2 border-purple-400 min-w-[240px] max-w-[300px]
+        ${selected ? 'ring-2 ring-offset-1 ring-purple-500 shadow-lg' : ''}
         ${nodeData.isHighlighted ? 'ring-2 ring-offset-1 ring-amber-400' : ''}
-        cursor-pointer hover:shadow-xl transition-shadow
       `}
-      onClick={handleExpand}
     >
       <Handle
         type="target"
@@ -223,57 +222,64 @@ function SubAgentCardComponent({ data, selected }: { data: WorkflowNodeData; sel
         className="!bg-purple-500 !w-3 !h-3 !border-2 !border-white"
       />
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-purple-500 to-purple-600 rounded-t-md">
-        <div className="flex items-center gap-2">
-          <Bot className="w-5 h-5 text-white" />
-          <span className="font-semibold text-white">
-            {subAgentInfo.subagentType} Agent
-          </span>
-        </div>
-        <button
-          className="flex items-center gap-1 px-2 py-1 text-xs text-purple-100 bg-purple-700/50 rounded hover:bg-purple-700 transition-colors"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleExpand();
-          }}
-        >
-          <Expand className="w-3 h-3" />
-          Open
-        </button>
+      {/* Header - tool call style but purple theme */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-purple-100 rounded-t-md">
+        <Rocket className="w-4 h-4 text-purple-600" />
+        <span className="text-sm font-semibold text-purple-700">
+          call-sub-agent
+        </span>
+        <span className="ml-auto text-xs text-slate-400">#{nodeData.stepIndex}</span>
       </div>
 
-      {/* Prompt Preview */}
-      <div className="px-4 py-3 border-b border-purple-100">
-        <p className="text-sm text-slate-600 line-clamp-2 italic">
+      {/* Sub-agent type */}
+      <div className="px-3 py-2 border-b border-purple-100">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Bot className="w-4 h-4 text-purple-500" />
+            <span className="text-sm font-medium text-purple-700">
+              {subAgentInfo.subagentType || 'Agent'}
+            </span>
+          </div>
+          <button
+            className="flex items-center gap-1 px-2 py-1 text-xs text-purple-600 bg-purple-50 rounded hover:bg-purple-100 transition-colors border border-purple-200"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleExpand();
+            }}
+          >
+            <Expand className="w-3 h-3" />
+            Open
+          </button>
+        </div>
+        {/* Prompt preview */}
+        <p className="mt-1 text-xs text-slate-500 line-clamp-2 italic">
           &quot;{subAgentInfo.promptPreview}&quot;
         </p>
       </div>
 
       {/* Metrics Row */}
-      <div className="flex items-center gap-4 px-4 py-2 bg-purple-50 rounded-b-md">
-        <div className="flex items-center gap-1 text-xs text-slate-600">
-          <Clock className="w-3.5 h-3.5 text-purple-500" />
-          <span>{formatDuration(subAgentInfo.totalDurationMs) || '-'}</span>
-        </div>
-        <div className="flex items-center gap-1 text-xs text-slate-600">
-          <Zap className="w-3.5 h-3.5 text-purple-500" />
-          <span>{formatTokens(subAgentInfo.totalTokens)} tokens</span>
-        </div>
-        <div className="flex items-center gap-1 text-xs text-slate-600">
-          <Wrench className="w-3.5 h-3.5 text-purple-500" />
-          <span>{subAgentInfo.totalToolCalls} tools</span>
-        </div>
-        <div className={`ml-auto flex items-center gap-1 text-xs font-medium ${
+      <div className="flex items-center gap-3 px-3 py-1.5 bg-purple-50/50 rounded-b-md text-xs">
+        <span className="flex items-center gap-1 text-slate-500">
+          <Clock className="w-3 h-3 text-purple-400" />
+          {formatDuration(subAgentInfo.totalDurationMs) || '-'}
+        </span>
+        <span className="flex items-center gap-1 text-slate-500">
+          <Zap className="w-3 h-3 text-purple-400" />
+          {formatTokens(subAgentInfo.totalTokens)}
+        </span>
+        <span className="flex items-center gap-1 text-slate-500">
+          <Wrench className="w-3 h-3 text-purple-400" />
+          {subAgentInfo.totalToolCalls}
+        </span>
+        <span className={`ml-auto flex items-center gap-1 font-medium ${
           subAgentInfo.status === 'completed' ? 'text-green-600' : 'text-red-600'
         }`}>
           {subAgentInfo.status === 'completed' ? (
-            <CheckCircle className="w-3.5 h-3.5" />
+            <CheckCircle className="w-3 h-3" />
           ) : (
-            <XCircle className="w-3.5 h-3.5" />
+            <XCircle className="w-3 h-3" />
           )}
-          <span>{subAgentInfo.status === 'completed' ? 'Done' : 'Failed'}</span>
-        </div>
+        </span>
       </div>
     </div>
   );
@@ -356,14 +362,14 @@ function ResultNodeComponent({ data, selected }: { data: WorkflowNodeData; selec
 function WorkflowNodeComponent({ data, selected }: NodeProps) {
   const nodeData = data as unknown as WorkflowNodeData;
 
-  // Route to sub-agent card for sub-agent card nodes
-  if (nodeData.isSubAgentCard) {
-    return <SubAgentCardComponent data={nodeData} selected={selected} />;
-  }
-
   // Route to result node for result types
   if (nodeData.nodeType === 'result_success' || nodeData.nodeType === 'result_failure') {
     return <ResultNodeComponent data={nodeData} selected={selected} />;
+  }
+
+  // Special rendering for Task tool calls (sub-agent calls)
+  if (nodeData.nodeType === 'tool_call' && nodeData.isSubAgentContainer && nodeData.subAgentInfo) {
+    return <SubAgentToolCallComponent data={nodeData} selected={selected} />;
   }
 
   const config = nodeTypeConfig[nodeData.nodeType] || nodeTypeConfig.system_notice;

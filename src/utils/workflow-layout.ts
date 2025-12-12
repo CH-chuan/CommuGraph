@@ -14,20 +14,20 @@ import type { WorkflowNode, WorkflowEdge, WorkflowLane } from '@/lib/models/type
 export const TREE_LAYOUT_CONFIG = {
   // Node dimensions
   nodeWidth: 280,
-  nodeHeight: 100,
-  compactNodeHeight: 60,
-  resultNodeHeight: 80,
-  subAgentCardHeight: 120,
-  sessionStartHeight: 80,
+  nodeHeight: 120,          // Increased for better content display
+  compactNodeHeight: 70,    // Increased
+  resultNodeHeight: 110,    // Increased for preview content
+  subAgentToolCallHeight: 150, // Task tool calls with sub-agent info are taller
+  sessionStartHeight: 90,
 
-  // Spacing
-  horizontalGap: 40,        // Between parallel nodes
-  verticalGap: 30,          // Between sequential nodes
-  parallelVerticalGap: 20,  // Between parallel group and next node
+  // Spacing - generous for visual clarity
+  horizontalGap: 100,       // Between parallel nodes (increased significantly)
+  verticalGap: 60,          // Between sequential nodes
+  parallelVerticalGap: 70,  // Between parallel group and next node
 
   // Canvas
-  canvasWidth: 1200,        // Base canvas width
-  padding: 60,              // Edge padding
+  canvasWidth: 1400,        // Wider canvas for parallel nodes
+  padding: 100,             // Edge padding
 };
 
 export interface LayoutedNode extends WorkflowNode {
@@ -58,8 +58,9 @@ export function getNodeHeight(node: WorkflowNode): number {
   if (node.isSessionStart) {
     return TREE_LAYOUT_CONFIG.sessionStartHeight;
   }
-  if (node.isSubAgentContainer) {
-    return TREE_LAYOUT_CONFIG.subAgentCardHeight;
+  // Task tool calls with sub-agent info are taller
+  if (node.isSubAgentContainer && node.subAgentInfo) {
+    return TREE_LAYOUT_CONFIG.subAgentToolCallHeight;
   }
   switch (node.nodeType) {
     case 'result_success':
@@ -69,7 +70,8 @@ export function getNodeHeight(node: WorkflowNode): number {
     case 'agent_reasoning':
       return TREE_LAYOUT_CONFIG.nodeHeight;
     case 'tool_call':
-      return TREE_LAYOUT_CONFIG.compactNodeHeight + 20;
+      // Regular tool calls need moderate height for label + preview
+      return TREE_LAYOUT_CONFIG.compactNodeHeight + 30;
     case 'user_input':
       return TREE_LAYOUT_CONFIG.nodeHeight;
     default:
@@ -163,7 +165,8 @@ function buildAdjacencyMap(
 interface ParallelGroup {
   id: string;
   toolCallNodes: WorkflowNode[];
-  resultNodes: WorkflowNode[];
+  // Map from tool call ID to its result node for proper alignment
+  toolCallToResult: Map<string, WorkflowNode>;
 }
 
 function identifyParallelGroups(
@@ -181,32 +184,32 @@ function identifyParallelGroups(
         group = {
           id: node.parallelGroupId,
           toolCallNodes: [],
-          resultNodes: [],
+          toolCallToResult: new Map(),
         };
         groups.set(node.parallelGroupId, group);
       }
       group.toolCallNodes.push(node);
 
-      // Find corresponding result node
+      // Find corresponding result node (include all result types)
       const childIds = adjacency.children.get(node.id) || [];
       for (const childId of childIds) {
         const childNode = nodeMap.get(childId);
-        if (childNode && (childNode.nodeType === 'result_success' || childNode.nodeType === 'result_failure')) {
-          group.resultNodes.push(childNode);
+        if (childNode && (
+          childNode.nodeType === 'result_success' ||
+          childNode.nodeType === 'result_failure' ||
+          childNode.nodeType === 'tool_result'
+        )) {
+          // Map this result to its parent tool call
+          group.toolCallToResult.set(node.id, childNode);
+          break; // Only one result per tool call
         }
       }
     }
   }
 
-  // Sort nodes within each group by parallelIndex
+  // Sort tool call nodes within each group by parallelIndex
   for (const group of groups.values()) {
     group.toolCallNodes.sort((a, b) => (a.parallelIndex ?? 0) - (b.parallelIndex ?? 0));
-    // Match result nodes to their tool calls
-    group.resultNodes.sort((a, b) => {
-      const aParent = nodes.find(n => n.id === a.parentNodeIds?.[0]);
-      const bParent = nodes.find(n => n.id === b.parentNodeIds?.[0]);
-      return (aParent?.parallelIndex ?? 0) - (bParent?.parallelIndex ?? 0);
-    });
   }
 
   return groups;
@@ -241,8 +244,11 @@ export function computeTreeLayout(
   // Track which nodes are in parallel groups
   const nodesInParallelGroups = new Set<string>();
   for (const group of parallelGroups.values()) {
-    for (const node of [...group.toolCallNodes, ...group.resultNodes]) {
+    for (const node of group.toolCallNodes) {
       nodesInParallelGroups.add(node.id);
+    }
+    for (const resultNode of group.toolCallToResult.values()) {
+      nodesInParallelGroups.add(resultNode.id);
     }
   }
 
@@ -274,15 +280,20 @@ export function computeTreeLayout(
         const totalWidth = toolCallCount * nodeWidth + (toolCallCount - 1) * config.horizontalGap;
         const startX = centerX - totalWidth / 2;
 
+        // Store X positions for each tool call to align results
+        const toolCallXPositions = new Map<string, number>();
+
         // Position tool call nodes
         let maxToolCallHeight = 0;
         for (let i = 0; i < group.toolCallNodes.length; i++) {
           const toolNode = group.toolCallNodes[i];
           const height = getNodeHeight(toolNode);
           maxToolCallHeight = Math.max(maxToolCallHeight, height);
+          const xPos = startX + i * (nodeWidth + config.horizontalGap);
 
+          toolCallXPositions.set(toolNode.id, xPos);
           positions.set(toolNode.id, {
-            x: startX + i * (nodeWidth + config.horizontalGap),
+            x: xPos,
             y: currentY,
             width: nodeWidth,
             height,
@@ -292,20 +303,23 @@ export function computeTreeLayout(
 
         currentY += maxToolCallHeight + config.verticalGap;
 
-        // Position result nodes below their tool calls
+        // Position result nodes directly below their parent tool calls
         let maxResultHeight = 0;
-        for (let i = 0; i < group.resultNodes.length; i++) {
-          const resultNode = group.resultNodes[i];
-          const height = getNodeHeight(resultNode);
-          maxResultHeight = Math.max(maxResultHeight, height);
+        for (const toolNode of group.toolCallNodes) {
+          const resultNode = group.toolCallToResult.get(toolNode.id);
+          if (resultNode) {
+            const height = getNodeHeight(resultNode);
+            maxResultHeight = Math.max(maxResultHeight, height);
+            const parentX = toolCallXPositions.get(toolNode.id) ?? startX;
 
-          positions.set(resultNode.id, {
-            x: startX + i * (nodeWidth + config.horizontalGap),
-            y: currentY,
-            width: nodeWidth,
-            height,
-          });
-          placed.add(resultNode.id);
+            positions.set(resultNode.id, {
+              x: parentX,
+              y: currentY,
+              width: nodeWidth,
+              height,
+            });
+            placed.add(resultNode.id);
+          }
         }
 
         currentY += maxResultHeight + config.parallelVerticalGap;

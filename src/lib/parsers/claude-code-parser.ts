@@ -217,6 +217,7 @@ interface MergedLLMResponse {
 /** Sub-agent metadata */
 export interface SubAgentInfo {
   agentId: string;
+  toolUseId?: string;  // tool_use_id that triggered this sub-agent
   subagentType?: string;
   prompt: string;
   totalDurationMs?: number;
@@ -574,13 +575,26 @@ export class ClaudeCodeParser extends BaseParser {
       const nodeType = this.classifyUserMessage(record);
       const content = this.extractUserContent(record);
 
+      // Extract tool_use_id from message content FIRST (needed for sub-agent matching)
+      let toolUseIdFromResult: string | undefined;
+      if (nodeType === WorkflowNodeType.TOOL_RESULT && Array.isArray(userMsg.content)) {
+        const toolResultContent = userMsg.content.find(
+          (c): c is ToolResultContent => c.type === 'tool_result'
+        );
+        if (toolResultContent) {
+          toolUseIdFromResult = toolResultContent.tool_use_id;
+        }
+      }
+
       // Extract sub-agent info from tool results
+      // Key by tool_use_id so we can match with the Task tool call later
       if (nodeType === WorkflowNodeType.TOOL_RESULT && record.toolUseResult?.agentId) {
         const result = record.toolUseResult;
-        const agentId = result.agentId; // Already checked for undefined above
-        if (agentId) {
-          subAgents.set(agentId, {
+        const agentId = result.agentId;
+        if (agentId && toolUseIdFromResult) {
+          subAgents.set(toolUseIdFromResult, {  // Key by tool_use_id, not agentId
             agentId,
+            toolUseId: toolUseIdFromResult,
             prompt: result.prompt || '',
             totalDurationMs: result.totalDurationMs,
             totalTokens: result.totalTokens,
@@ -605,8 +619,6 @@ export class ClaudeCodeParser extends BaseParser {
 
       // Determine if result is success or failure
       let resultStatus: 'success' | 'failure' | undefined;
-      let toolUseIdFromResult: string | undefined;
-
       if (nodeType === WorkflowNodeType.TOOL_RESULT) {
         if (record.toolUseResult?.status === 'failed' ||
             record.toolUseResult?.stderr ||
@@ -617,16 +629,6 @@ export class ClaudeCodeParser extends BaseParser {
           resultStatus = 'failure';
         } else {
           resultStatus = 'success';
-        }
-
-        // Extract tool_use_id from message content
-        if (Array.isArray(userMsg.content)) {
-          const toolResultContent = userMsg.content.find(
-            (c): c is ToolResultContent => c.type === 'tool_result'
-          );
-          if (toolResultContent) {
-            toolUseIdFromResult = toolResultContent.tool_use_id;
-          }
         }
       }
 

@@ -412,40 +412,61 @@ export class WorkflowGraphBuilder {
     }
 
     // Connect tool results to their tool calls via tool_use_id
+    // Track which results belong to which parallel group (for join pattern)
+    const parallelGroupResults = new Map<string, WorkflowNode[]>(); // requestId -> result nodes
+
     for (const [toolUseId, toolResultNode] of toolResultByToolUseId) {
       const toolCallNode = nodeByToolUseId.get(toolUseId);
       if (toolCallNode) {
         processedNodes.add(toolResultNode.id);
 
-        // For sub-agent calls (Task tool), insert sub-agent card between call and result
-        if (toolCallNode.toolName === 'Task' && toolCallNode.isSubAgentContainer) {
-          // Create sub-agent card node if not exists
-          const subAgentCardId = `subagent-card-${toolCallNode.toolUseId}`;
-          if (!this.nodes.has(subAgentCardId)) {
-            const subAgentCard = this.createSubAgentCardNode(toolCallNode, toolResultNode);
-            if (subAgentCard) {
-              this.nodes.set(subAgentCardId, subAgentCard);
-              nodeByUuid.set(subAgentCard.uuid, subAgentCard);
-
-              // Connect: tool_call -> sub-agent card -> tool_result
-              this.createEdge(toolCallNode, subAgentCard, stepIndex++, false);
-              this.createEdge(subAgentCard, toolResultNode, stepIndex++, false);
-            } else {
-              // Fallback: direct connection
-              this.createEdge(toolCallNode, toolResultNode, stepIndex++, false);
-            }
-          }
-        } else {
-          // Normal tool call -> result connection
-          this.createEdge(toolCallNode, toolResultNode, stepIndex++, false);
-        }
+        // Connect tool call directly to result (same for all tools including Task)
+        this.createEdge(toolCallNode, toolResultNode, stepIndex++, false);
 
         // Copy toolName to result node for display
         toolResultNode.toolName = toolCallNode.toolName;
+
+        // Track parallel group membership for join pattern
+        if (toolCallNode.parallelGroupId) {
+          const existing = parallelGroupResults.get(toolCallNode.parallelGroupId) || [];
+          existing.push(toolResultNode);
+          parallelGroupResults.set(toolCallNode.parallelGroupId, existing);
+        }
       }
     }
 
-    // Process non-requestId nodes (user input, system notices)
+    // Implement JOIN pattern: connect ALL results from a parallel group to the next Agent Reasoning
+    // Use timestamp-based detection instead of parentUuid
+    const mainNodes = Array.from(this.nodes.values())
+      .filter(n => n.laneId === 'main' && !n.isSessionStart)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    for (const [_parallelGroupId, results] of parallelGroupResults) {
+      if (results.length <= 1) continue; // Not a parallel group
+
+      // Find the latest result timestamp in this group
+      const latestResultTime = Math.max(
+        ...results.map(r => new Date(r.timestamp).getTime())
+      );
+
+      // Find the next Agent Reasoning node after all results complete
+      const nextReasoningNode = mainNodes.find(n =>
+        n.nodeType === WorkflowNodeType.AGENT_REASONING &&
+        new Date(n.timestamp).getTime() > latestResultTime
+      );
+
+      if (nextReasoningNode) {
+        // Connect ALL results to this reasoning node (JOIN pattern)
+        for (const resultNode of results) {
+          if (!this.edges.has(`${resultNode.id}->${nextReasoningNode.id}`)) {
+            this.createEdge(resultNode, nextReasoningNode, stepIndex++, false);
+          }
+        }
+        processedNodes.add(nextReasoningNode.id);
+      }
+    }
+
+    // Process remaining non-requestId nodes (user input, system notices)
     for (const node of this.nodes.values()) {
       if (processedNodes.has(node.id) || node.isSessionStart) continue;
 
@@ -468,40 +489,6 @@ export class WorkflowGraphBuilder {
 
     // Connect orphan nodes (nodes with no incoming edges) to maintain flow
     this.connectOrphanNodes(nodeByUuid, stepIndex);
-  }
-
-  /**
-   * Create a sub-agent card node to be placed between tool call and result.
-   */
-  private createSubAgentCardNode(
-    toolCallNode: WorkflowNode,
-    toolResultNode: WorkflowNode
-  ): WorkflowNode | null {
-    if (!toolCallNode.subAgentInfo) return null;
-
-    const cardId = `subagent-card-${toolCallNode.toolUseId}`;
-
-    return {
-      id: cardId,
-      stepIndex: toolCallNode.stepIndex + 0.5, // Between call and result
-      timestamp: toolCallNode.timestamp,
-      nodeType: WorkflowNodeType.SYSTEM_NOTICE, // Will be rendered as sub-agent card
-      label: `Sub-Agent: ${toolCallNode.subAgentInfo.subagentType}`,
-      content: toolCallNode.subAgentInfo.prompt,
-      contentPreview: toolCallNode.subAgentInfo.promptPreview,
-      laneId: toolCallNode.laneId,
-      isSidechain: false,
-
-      // Mark as sub-agent container for special rendering
-      isSubAgentContainer: true,
-      isSubAgentCard: true, // New flag for card-style rendering
-      subAgentInfo: toolCallNode.subAgentInfo,
-
-      uuid: cardId,
-      parentUuid: toolCallNode.uuid,
-      parentNodeIds: [toolCallNode.id],
-      childNodeIds: [toolResultNode.id],
-    };
   }
 
   /**
@@ -801,6 +788,7 @@ export class WorkflowGraphBuilder {
 
   /**
    * Mark Task tool calls as sub-agent containers with their info.
+   * Matches by toolUseId (tool_use_id from the tool call matches the key in subAgents map).
    */
   private markSubAgentContainers(): void {
     for (const node of this.nodes.values()) {
@@ -809,22 +797,20 @@ export class WorkflowGraphBuilder {
         const subagentType = input?.subagent_type as string | undefined;
         const prompt = input?.prompt as string | undefined;
 
-        // Find matching sub-agent info
-        for (const [agentId, info] of this.subAgents) {
-          if (info.subagentType === subagentType) {
-            node.isSubAgentContainer = true;
-            node.subAgentInfo = {
-              agentId,
-              subagentType: info.subagentType || subagentType || 'unknown',
-              prompt: info.prompt || prompt || '',
-              promptPreview: this.truncate(info.prompt || prompt || '', PREVIEW_LENGTH),
-              totalDurationMs: info.totalDurationMs || 0,
-              totalTokens: info.totalTokens || 0,
-              totalToolCalls: info.totalToolUseCount || 0,
-              status: info.status === 'completed' ? 'completed' : 'failed',
-            };
-            break;
-          }
+        // Match by toolUseId (sub-agents are keyed by tool_use_id in the map)
+        const info = this.subAgents.get(node.toolUseId || '');
+        if (info) {
+          node.isSubAgentContainer = true;
+          node.subAgentInfo = {
+            agentId: info.agentId,
+            subagentType: subagentType || 'unknown',  // Get from tool call input
+            prompt: info.prompt || prompt || '',
+            promptPreview: this.truncate(info.prompt || prompt || '', PREVIEW_LENGTH),
+            totalDurationMs: info.totalDurationMs || 0,
+            totalTokens: info.totalTokens || 0,
+            totalToolCalls: info.totalToolUseCount || 0,
+            status: info.status === 'completed' ? 'completed' : 'failed',
+          };
         }
       }
     }

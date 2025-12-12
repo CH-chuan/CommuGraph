@@ -29,9 +29,8 @@ export function ChatLog() {
     framework,
     currentStep,
     setCurrentStep,
-    setHighlightedAgentId,
-    setHighlightedStepIndex,
     highlightedStepIndex,
+    setHighlightedStepIndex,
   } = useAppContext();
 
   const isClaudeCode = framework === 'claudecode';
@@ -48,10 +47,11 @@ export function ChatLog() {
   const isLoading = isClaudeCode ? workflowLoading : graphLoading;
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const currentMessageRef = useRef<HTMLDivElement>(null);
+  const highlightedMessageRef = useRef<HTMLDivElement>(null);
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
     null
   );
+  const [animatingStepIndex, setAnimatingStepIndex] = useState<number | null>(null);
 
   // Extract messages based on framework
   const { messages, agentColors } = useMemo(() => {
@@ -116,15 +116,42 @@ export function ChatLog() {
     return { messages: allMessages, agentColors: colors };
   }, [isClaudeCode, workflowData, graphData]);
 
-  // Auto-scroll to current step
+  // Auto-scroll to highlighted step (from graph node click) with animation
   useEffect(() => {
-    if (currentMessageRef.current) {
-      currentMessageRef.current.scrollIntoView({
+    if (highlightedStepIndex !== null && highlightedMessageRef.current) {
+      const element = highlightedMessageRef.current;
+
+      // Use IntersectionObserver to detect when element is visible after scroll
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const entry = entries[0];
+          if (entry.isIntersecting) {
+            // Element is now visible - trigger animation
+            setAnimatingStepIndex(highlightedStepIndex);
+            observer.disconnect();
+
+            // Clear animation after it completes
+            setTimeout(() => {
+              setAnimatingStepIndex(null);
+            }, 800);
+          }
+        },
+        { threshold: 0.5 } // Trigger when 50% visible
+      );
+
+      observer.observe(element);
+
+      // Start scrolling
+      element.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
       });
+
+      return () => {
+        observer.disconnect();
+      };
     }
-  }, [currentStep]);
+  }, [highlightedStepIndex]);
 
   if (!graphId) {
     return (
@@ -176,35 +203,28 @@ export function ChatLog() {
               const isLongMessage =
                 msg.content.length > 80 || msg.content.includes('\n');
 
+              // Only set ref for highlighted message (from graph click)
+              const messageRef = isHighlighted ? highlightedMessageRef : undefined;
+
+              // Check if this message should animate
+              const isAnimating = msg.stepIndex === animatingStepIndex;
+
               return (
                 <div
                   key={messageId}
-                  ref={isCurrent ? currentMessageRef : undefined}
+                  ref={messageRef}
                   className={`
                     p-3 rounded-lg border transition-all cursor-pointer select-none
                     ${isCurrent ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-200 bg-white'}
                     ${isHighlighted && !isCurrent ? 'border-amber-400 bg-amber-50' : ''}
+                    ${isAnimating ? 'animate-pulse-highlight' : ''}
                     ${!isPast ? 'opacity-40' : ''}
                     hover:shadow-md hover:border-blue-300
                     active:scale-[0.98]
                   `}
-                  title="Click to navigate - Double-click to jump and highlight"
-                  onClick={() => setCurrentStep(msg.stepIndex)}
-                  onDoubleClick={() => {
-                    // Double-click to jump to this step and highlight the sender
-                    setCurrentStep(msg.stepIndex);
-                    setHighlightedAgentId(msg.sender);
-                    // Clear highlight after 2 seconds
-                    setTimeout(() => setHighlightedAgentId(null), 2000);
-                  }}
-                  onMouseEnter={() => {
-                    setHighlightedAgentId(msg.sender);
-                    setHighlightedStepIndex(msg.stepIndex);
-                  }}
-                  onMouseLeave={() => {
-                    setHighlightedAgentId(null);
-                    setHighlightedStepIndex(null);
-                  }}
+                  title="Click to highlight, double-click to update graph"
+                  onClick={() => setHighlightedStepIndex(msg.stepIndex)}
+                  onDoubleClick={() => setCurrentStep(msg.stepIndex)}
                 >
                   {/* Header: Step + Sender -> Receiver */}
                   <div className="flex items-center gap-2 mb-1">

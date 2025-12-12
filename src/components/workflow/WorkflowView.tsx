@@ -29,7 +29,6 @@ import { useAppContext } from '@/context/app-context';
 import { WorkflowNode, workflowNodeTypes } from './WorkflowNode';
 import { WorkflowEdge, workflowEdgeTypes } from './WorkflowEdge';
 import { SessionStartNode } from './SessionStartNode';
-import { SubAgentCard } from './SubAgentCard';
 import { SubAgentModal } from './SubAgentModal';
 import type { WorkflowGraphSnapshot, WorkflowNode as WFNode } from '@/lib/models/types';
 import {
@@ -42,7 +41,6 @@ import {
 const extendedNodeTypes = {
   ...workflowNodeTypes,
   sessionStart: SessionStartNode,
-  subAgentCard: SubAgentCard,
 };
 
 interface WorkflowViewProps {
@@ -54,7 +52,7 @@ interface WorkflowViewProps {
  */
 function getReactFlowNodeType(node: WFNode): string {
   if (node.isSessionStart) return 'sessionStart';
-  if (node.isSubAgentContainer) return 'subAgentCard';
+  // Task tool calls with sub-agents use 'workflow' type and render via SubAgentToolCallComponent
   return 'workflow';
 }
 
@@ -64,7 +62,7 @@ function getReactFlowNodeType(node: WFNode): string {
 function convertToReactFlow(
   snapshot: WorkflowGraphSnapshot,
   currentStep: number | null,
-  highlightedNodeId: string | null,
+  highlightedStepIndex: number | null,
   onSubAgentExpand: (agentId: string) => void
 ): { nodes: Node[]; edges: Edge[]; totalHeight: number } {
   const { nodes, edges, lanes } = snapshot;
@@ -87,6 +85,7 @@ function convertToReactFlow(
   // Convert to React Flow nodes
   const reactFlowNodes: Node[] = layout.nodes.map(node => {
     const isCurrent = currentStep !== null && node.stepIndex === currentStep;
+    const isHighlighted = highlightedStepIndex !== null && node.stepIndex === highlightedStepIndex;
     const nodeType = getReactFlowNodeType(node);
 
     return {
@@ -106,7 +105,7 @@ function convertToReactFlow(
         inputTokens: node.inputTokens,
         outputTokens: node.outputTokens,
         laneId: node.laneId,
-        isHighlighted: highlightedNodeId === node.id || isCurrent,
+        isHighlighted: isHighlighted || isCurrent,
 
         // Tool result enhancements
         toolResultPreview: node.toolResultPreview,
@@ -162,8 +161,7 @@ function convertToReactFlow(
  * WorkflowView Component
  */
 export function WorkflowView({ data }: WorkflowViewProps) {
-  const { currentStep, setCurrentStep, setHighlightedStepIndex, graphId } = useAppContext();
-  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const { currentStep, setCurrentStep, highlightedStepIndex, setHighlightedStepIndex, graphId } = useAppContext();
   const [selectedSubAgentId, setSelectedSubAgentId] = useState<string | null>(null);
 
   // Handle sub-agent expand
@@ -173,15 +171,28 @@ export function WorkflowView({ data }: WorkflowViewProps) {
 
   // Convert data to React Flow format
   const { nodes, edges, totalHeight } = useMemo(
-    () => convertToReactFlow(data, currentStep, highlightedNodeId, handleSubAgentExpand),
-    [data, currentStep, highlightedNodeId, handleSubAgentExpand]
+    () => convertToReactFlow(data, currentStep, highlightedStepIndex, handleSubAgentExpand),
+    [data, currentStep, highlightedStepIndex, handleSubAgentExpand]
   );
 
-  // Handle node click
+  // Handle single click - scroll chat log to message (don't change graph step)
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       const stepIndex = (node.data as { stepIndex?: number }).stepIndex;
       if (stepIndex !== undefined) {
+        // Only scroll chat log - don't change currentStep
+        setHighlightedStepIndex(stepIndex);
+      }
+    },
+    [setHighlightedStepIndex]
+  );
+
+  // Handle double click - restore graph to that step AND scroll chat log
+  const onNodeDoubleClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      const stepIndex = (node.data as { stepIndex?: number }).stepIndex;
+      if (stepIndex !== undefined) {
+        // Set currentStep (restore graph) and scroll chat log
         setCurrentStep(stepIndex);
         setHighlightedStepIndex(stepIndex);
       }
@@ -189,22 +200,6 @@ export function WorkflowView({ data }: WorkflowViewProps) {
     [setCurrentStep, setHighlightedStepIndex]
   );
 
-  // Handle node hover
-  const onNodeMouseEnter = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
-      setHighlightedNodeId(node.id);
-      const stepIndex = (node.data as { stepIndex?: number }).stepIndex;
-      if (stepIndex !== undefined) {
-        setHighlightedStepIndex(stepIndex);
-      }
-    },
-    [setHighlightedStepIndex]
-  );
-
-  const onNodeMouseLeave = useCallback(() => {
-    setHighlightedNodeId(null);
-    setHighlightedStepIndex(null);
-  }, [setHighlightedStepIndex]);
 
   // Calculate viewport dimensions
   const viewportHeight = useMemo(() => {
@@ -236,8 +231,7 @@ export function WorkflowView({ data }: WorkflowViewProps) {
           nodeTypes={extendedNodeTypes}
           edgeTypes={workflowEdgeTypes}
           onNodeClick={onNodeClick}
-          onNodeMouseEnter={onNodeMouseEnter}
-          onNodeMouseLeave={onNodeMouseLeave}
+          onNodeDoubleClick={onNodeDoubleClick}
           fitView
           fitViewOptions={{ padding: 0.3, minZoom: 0.3 }}
           minZoom={0.1}

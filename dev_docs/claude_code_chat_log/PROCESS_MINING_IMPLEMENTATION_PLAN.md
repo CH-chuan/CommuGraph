@@ -628,49 +628,46 @@ Tool results converge before the next agent reasoning step. The next reasoning n
 
 ---
 
-### 6.4 Sub-Agent Visualization: Parallel Lanes
+### 6.4 Sub-Agent Visualization: Inline Cards (Simplified Design)
 
-When the main agent spawns a sub-agent via `tool:task`:
+**Design Decision**: Sub-agent calls (Task tool) are treated like any other tool call - they appear inline in the workflow graph, not in separate parallel lanes.
 
+**Visual Layout:**
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│ Main Agent Lane                         │ Sub-agent Lane            │
-├─────────────────────────────────────────┼───────────────────────────┤
-│                                         │                           │
-│ [Agent Reasoning]                       │                           │
-│        │                                │                           │
-│        ▼                                │                           │
-│   [tool:task] ──────────────────────────┼──► [Start]                │
-│        │                                │        │                  │
-│        │ (waiting)                      │        ▼                  │
-│        │                                │   [Reasoning]             │
-│        │                                │        │                  │
-│        │                                │        ▼                  │
-│        │                                │   [tool:read]             │
-│        │                                │        │                  │
-│        │                                │        ▼                  │
-│        │                                │    [success]              │
-│        │                                │        │                  │
-│        ▼                                │        ▼                  │
-│  [task_result] ◄────────────────────────┼─── [End]                  │
-│        │                                │                           │
-│        ▼                                │                           │
-│ [Agent Reasoning]                       │                           │
-│                                         │                           │
-└─────────────────────────────────────────┴───────────────────────────┘
+         [Agent Reasoning]
+                │
+    ┌───────────┼───────────┐     Fork: parallel tool calls
+    ↓           ↓           ↓
+ [Read]      [Bash]      [Task]   ← Task is styled differently (purple)
+    ↓           ↓           ↓
+[Result]   [Result]    [Result]   ← Task result linked same as others
+    └───────────┼───────────┘     Join: all results connect
+                ↓
+         [Agent Reasoning]
 ```
 
-**Sub-agent metadata to display:**
-- On `[tool:task]` node: Sub-agent **prompt** (what it was asked to do)
-- On `[task_result]` node or sub-agent lane header:
-  - Status: success / failure
-  - Tokens used
-  - Duration (ms)
-  - Tool call count
+**Task Tool Call Card (Purple-themed):**
+```
+┌─────────────────────────────────┐
+│ 🚀 call-sub-agent          #5  │  ← Header (purple theme)
+├─────────────────────────────────┤
+│ Explore Agent                   │  ← Sub-agent type
+│ "Explore the frontend..."       │  ← Prompt preview
+├─────────────────────────────────┤
+│ ⏱ 72.7s │ 56.8k tok │ [Open]   │  ← Metrics + expand button
+└─────────────────────────────────┘
+```
 
-**Failure handling:**
-- If sub-agent succeeds: Connect `[End]` → `[task_result]`
-- If sub-agent fails: Connect `[End]` → `[task_result:failure]` (styled differently)
+**Sub-agent metadata displayed on Task tool call card:**
+- Sub-agent type (e.g., "Explore Agent", "Plan Agent")
+- Prompt preview (truncated)
+- Duration, token count, tool call count
+- Status indicator (completed/failed)
+- "Open" button → opens modal with full sub-agent workflow
+
+**Result node** styled same as other tool results (green/red border based on success/failure).
+
+**Modal Expansion**: Clicking "Open" button shows the sub-agent's internal workflow in a modal dialog, rendered using the same WorkflowView component.
 
 ---
 
@@ -918,19 +915,23 @@ Existing chat log enhanced with:
 5. Duration-based edge coloring (green → red)
 6. Node content preview (file paths, commands, prompts)
 
-### Phase 4: Sub-Agent Lanes (Priority: Medium)
+### Phase 4: Sub-Agent Inline Cards (Priority: Medium) — REVISED
 
-**Goal**: Visualize sub-agent execution in parallel lanes
+**Goal**: Display sub-agent calls as inline cards with modal expansion
 
-**Files to modify:**
-- `src/components/workflow/WorkflowView.tsx`
-- `src/utils/workflow-layout.ts`
+**Design change**: Replaced parallel lanes with inline cards for simplicity.
 
-**Deliverables:**
-1. Lane separation (main agent left, sub-agents right)
-2. Lane headers with sub-agent metadata (type, tokens, duration)
-3. Cross-lane edges (`tool:task` → sub-agent start, sub-agent end → `task_result`)
-4. Lane collapse/expand functionality
+**Files modified:**
+- `src/components/workflow/WorkflowView.tsx` - Added modal support
+- `src/components/workflow/WorkflowNode.tsx` - Enhanced Task tool call card
+- `src/components/workflow/SubAgentModal.tsx` - New modal component
+- `src/lib/services/workflow-graph-builder.ts` - Simplified, removed sub-agent card nodes
+
+**Deliverables (COMPLETED):**
+1. ✅ Task tool calls styled differently (purple theme)
+2. ✅ Sub-agent info displayed on tool call card (type, prompt preview, metrics)
+3. ✅ "Open" button to expand sub-agent workflow in modal
+4. ✅ Result node connected directly to Task tool call (no intermediate card node)
 
 ### Phase 5: Timeline Integration (Priority: Medium)
 
@@ -1033,20 +1034,21 @@ Use the provided `claude_code_chatlog_example/` folder as the primary test case:
 
 ### Must-Have (Phase 1-3)
 
-- [ ] Parse Claude Code chat logs (main + sub-agents)
-- [ ] Decompose "user" type correctly (user_input, tool_result, system_notice)
-- [ ] Merge LLM response chunks by requestId/message.id
-- [ ] Generate workflow nodes (Reasoning, Tool Call, Tool Result)
-- [ ] Build DAG with fork/join for parallel tool calls
-- [ ] Display Agent Activity View (View A, default) with vertical timeline
+- [x] Parse Claude Code chat logs (main + sub-agents)
+- [x] Decompose "user" type correctly (user_input, tool_result, system_notice)
+- [x] Merge LLM response chunks by requestId/message.id
+- [x] Generate workflow nodes (Reasoning, Tool Call, Tool Result)
+- [x] Build DAG with fork/join for parallel tool calls
+- [x] Display Agent Activity View (View A, default) with tree layout
 
 ### Should-Have (Phase 4-6)
 
-- [ ] Sub-agent parallel lanes visualization
-- [ ] Duration-colored edges (green → red scale)
-- [ ] Vertical time axis synced with bottom timeline
-- [ ] Metrics dashboard sidebar
-- [ ] Click-to-navigate between chat log and graph
+- [x] Sub-agent inline card visualization (replaced parallel lanes)
+- [x] Duration-colored edges (green → red scale)
+- [x] Click-to-navigate between chat log and graph (single-click = highlight, double-click = update step)
+- [x] Pulse animation on chat log scroll from graph click
+- [ ] Vertical time axis synced with bottom timeline (pending)
+- [ ] Metrics dashboard sidebar (pending)
 
 ### Nice-to-Have (Phase 7-8) — DEFERRED
 
@@ -1119,6 +1121,9 @@ This matrix reveals patterns like:
 |------|---------|
 | 2025-12-11 | Initial document |
 | 2025-12-11 | **Major revision**: Shifted from agent-topology to sequential workflow focus. Added: (1) Two-view architecture (View A = Agent Activity, View B = Process), (2) Fork/join DAG structure, (3) Sub-agent parallel lanes, (4) Vertical time axis design, (5) Duration-colored edges, (6) "User" type decomposition. View A is default; View B deferred pending taxonomy. |
+| 2025-12-11 | **Sub-agent design simplification**: Changed from parallel lanes to inline cards. Task tool calls now rendered like other tools with special purple styling. Sub-agent workflow accessible via modal. Removed separate lane headers. |
+| 2025-12-11 | **Layout improvements**: Increased node spacing (horizontalGap: 100, verticalGap: 60, parallelVerticalGap: 70). Fixed result node alignment with parent tool calls. Improved fork/join pattern with timestamp-based join detection. |
+| 2025-12-11 | **Interaction redesign**: (1) Removed all hover interactions for simplicity. (2) Single click = highlight only (chat log + graph cross-highlight). (3) Double click = update graph step. (4) Added pulse animation on chat log scroll with IntersectionObserver for proper timing. |
 
 ---
 
