@@ -35,7 +35,7 @@ interface PreFlightModalProps {
 
 export function PreFlightModal({ open, onClose }: PreFlightModalProps) {
   const [files, setFiles] = useState<File[]>([]);
-  const [framework, setFramework] = useState('autogen');
+  const [framework, setFramework] = useState('claudecode');
   const [subAgentDir, setSubAgentDir] = useState('');
   const { setGraphId, setTotalSteps, setMainAgentStepCount, setFramework: setAppFramework } = useAppContext();
   const uploadMutation = useUpload();

@@ -15,6 +15,9 @@ figma_prototype/
 .env.production.local
 
 
+# claude code
+.claude
+
 # ================================
 #  Next.js
 # ================================
