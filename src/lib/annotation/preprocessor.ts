@@ -1,13 +1,15 @@
 /**
- * Annotation Preprocessor for Claude Code Logs
+ * Annotation Preprocessor for Claude Code Logs (v0.2)
  *
  * Transforms raw Claude Code JSONL into intermediate JSONL format
- * ready for annotation according to annotation_schema_v01.yaml.
+ * ready for annotation according to annotation_schema_v02.yaml.
  *
  * Unit types produced:
- * - assistant_thought_text: Grouped thinking+text blocks per model turn
- * - tool_exchange: One tool_use paired with its tool_result(s)
- * - user_prompt: Direct user input (not tool results or meta)
+ * - assistant_turn: All content from one model turn (thinking + text + tool calls)
+ *                   with tool_summary for tool execution status
+ * - user_turn: Direct user input (not tool results or meta)
+ *
+ * Tool results are NOT separate units - they populate tool_summary on assistant_turn.
  *
  * Focus: Main agent only (isSidechain=false)
  */
@@ -19,15 +21,15 @@ import {
   type RawLogRecord,
   type AssistantMessage,
   type UserMessage,
-  type AssistantContent,
   type ToolUseContent,
   type ToolResultContent,
   type ThinkingContent,
   type TextContent,
   type SourcePointers,
+  type ToolSummary,
+  type ToolCallSummary,
   makeAssistantEventId,
-  makeToolExchangeEventId,
-  makeUserPromptEventId,
+  makeUserTurnEventId,
 } from './types';
 
 // ============================================================================
@@ -35,7 +37,7 @@ import {
 // ============================================================================
 
 interface AssistantTurn {
-  requestId: string;
+  requestId?: string;
   messageId: string;
   timestamp: string;
   rawUuids: string[];
@@ -48,24 +50,11 @@ interface AssistantTurn {
   agentId?: string;
 }
 
-interface ToolExchange {
-  toolUseId: string;
-  toolName: string;
-  toolInput: Record<string, unknown>;
-  toolUseTimestamp: string;
-  toolUseUuid: string;
-  toolUseLineNumber: number;
-  toolResults: {
-    uuid: string;
-    timestamp: string;
-    lineNumber: number;
-    content: string;
-    isError: boolean;
-  }[];
-  requestId?: string;
-  messageId?: string;
-  isSidechain: boolean;
-  agentId?: string;
+interface ToolResultInfo {
+  uuid: string;
+  timestamp: string;
+  lineNumber: number;
+  isError: boolean;
 }
 
 interface ParsedLine {
@@ -167,21 +156,10 @@ export class AnnotationPreprocessor {
 
   /**
    * Extract tool results from a user record.
+   * Returns map of tool_use_id -> result info
    */
-  private extractToolResults(record: RawLogRecord, lineNumber: number): Map<string, {
-    uuid: string;
-    timestamp: string;
-    lineNumber: number;
-    content: string;
-    isError: boolean;
-  }> {
-    const results = new Map<string, {
-      uuid: string;
-      timestamp: string;
-      lineNumber: number;
-      content: string;
-      isError: boolean;
-    }>();
+  private extractToolResults(record: RawLogRecord, lineNumber: number): Map<string, ToolResultInfo> {
+    const results = new Map<string, ToolResultInfo>();
 
     const userMsg = record.message as UserMessage | undefined;
     if (!userMsg || !Array.isArray(userMsg.content)) return results;
@@ -190,24 +168,10 @@ export class AnnotationPreprocessor {
       if (item.type !== 'tool_result') continue;
 
       const toolResult = item as ToolResultContent;
-      let contentStr: string;
-
-      if (typeof toolResult.content === 'string') {
-        contentStr = toolResult.content;
-      } else if (Array.isArray(toolResult.content)) {
-        contentStr = toolResult.content
-          .filter(c => c.type === 'text')
-          .map(c => c.text)
-          .join('\n');
-      } else {
-        contentStr = JSON.stringify(toolResult.content);
-      }
-
       results.set(toolResult.tool_use_id, {
         uuid: record.uuid,
         timestamp: record.timestamp,
         lineNumber,
-        content: contentStr,
         isError: toolResult.is_error ?? false,
       });
     }
@@ -223,12 +187,14 @@ export class AnnotationPreprocessor {
 
     for (const { lineNumber, record } of mainRecords) {
       if (record.type !== 'assistant') continue;
-      if (!record.requestId) continue;
 
       const assistantMsg = record.message as AssistantMessage | undefined;
       if (!assistantMsg) continue;
 
-      const key = `${record.requestId}:${assistantMsg.id}`;
+      // Use requestId:messageId as key, fallback to just messageId
+      const key = record.requestId
+        ? `${record.requestId}:${assistantMsg.id}`
+        : `:${assistantMsg.id}`;
 
       let turn = turns.get(key);
       if (!turn) {
@@ -278,47 +244,52 @@ export class AnnotationPreprocessor {
   }
 
   /**
-   * Build tool exchanges by pairing tool_use with tool_results.
+   * Build tool results index: tool_use_id -> ToolResultInfo[]
    */
-  private buildToolExchanges(
-    turns: Map<string, AssistantTurn>,
-    mainRecords: ParsedLine[]
-  ): Map<string, ToolExchange> {
-    const exchanges = new Map<string, ToolExchange>();
+  private buildToolResultsIndex(mainRecords: ParsedLine[]): Map<string, ToolResultInfo[]> {
+    const index = new Map<string, ToolResultInfo[]>();
 
-    // First, collect all tool_use blocks
-    for (const [, turn] of turns) {
-      for (const toolUse of turn.toolUseBlocks) {
-        exchanges.set(toolUse.id, {
-          toolUseId: toolUse.id,
-          toolName: toolUse.name,
-          toolInput: toolUse.input,
-          toolUseTimestamp: turn.timestamp,
-          toolUseUuid: turn.rawUuids[0], // Use first UUID
-          toolUseLineNumber: turn.lineNumbers[0],
-          toolResults: [],
-          requestId: turn.requestId,
-          messageId: turn.messageId,
-          isSidechain: turn.isSidechain,
-          agentId: turn.agentId,
-        });
-      }
-    }
-
-    // Then, match tool_results
     for (const { lineNumber, record } of mainRecords) {
       if (!this.isToolResult(record)) continue;
 
       const results = this.extractToolResults(record, lineNumber);
-      for (const [toolUseId, result] of results) {
-        const exchange = exchanges.get(toolUseId);
-        if (exchange) {
-          exchange.toolResults.push(result);
-        }
+      for (const [toolUseId, resultInfo] of results) {
+        const existing = index.get(toolUseId) || [];
+        existing.push(resultInfo);
+        index.set(toolUseId, existing);
       }
     }
 
-    return exchanges;
+    return index;
+  }
+
+  /**
+   * Build tool_summary for an assistant turn.
+   */
+  private buildToolSummary(
+    turn: AssistantTurn,
+    toolResultsIndex: Map<string, ToolResultInfo[]>
+  ): ToolSummary | undefined {
+    if (turn.toolUseBlocks.length === 0) {
+      return undefined;
+    }
+
+    const toolCalls: ToolCallSummary[] = [];
+
+    for (const toolUse of turn.toolUseBlocks) {
+      const results = toolResultsIndex.get(toolUse.id) || [];
+      const hasError = results.some(r => r.isError);
+
+      toolCalls.push({
+        tool_use_id: toolUse.id,
+        tool_name: toolUse.name,
+        success: results.length > 0 && !hasError,
+        is_error: hasError,
+        result_count: results.length,
+      });
+    }
+
+    return { tool_calls: toolCalls };
   }
 
   /**
@@ -327,11 +298,11 @@ export class AnnotationPreprocessor {
   generateAnnotationRecords(): AnnotationRecord[] {
     const mainRecords = this.filterMainAgent();
     const turns = this.groupAssistantTurns(mainRecords);
-    const exchanges = this.buildToolExchanges(turns, mainRecords);
+    const toolResultsIndex = this.buildToolResultsIndex(mainRecords);
 
     const output: AnnotationRecord[] = [];
 
-    // 1. Generate user_prompt records
+    // 1. Generate user_turn records
     for (const { lineNumber, record } of mainRecords) {
       if (!this.isUserPrompt(record)) continue;
 
@@ -340,11 +311,10 @@ export class AnnotationPreprocessor {
 
       output.push({
         session_id: this.sessionId,
-        event_id: makeUserPromptEventId(record.uuid),
+        event_id: makeUserTurnEventId(record.uuid),
         actor_id: 'human',
         actor_type: 'human',
-        role: 'delegator',
-        unit_type: 'user_prompt',
+        unit_type: 'user_turn',
         source: {
           raw_file: this.rawFile,
           raw_line_range: [lineNumber, lineNumber],
@@ -359,12 +329,9 @@ export class AnnotationPreprocessor {
       });
     }
 
-    // 2. Generate assistant_thought_text records (only if has thinking or text)
+    // 2. Generate assistant_turn records
     for (const [, turn] of turns) {
-      const hasThinkingOrText = turn.thinkingBlocks.length > 0 || turn.textBlocks.length > 0;
-      if (!hasThinkingOrText) continue;
-
-      // Combine thinking and text
+      // Build combined text content
       const textParts: string[] = [];
       if (turn.thinkingBlocks.length > 0) {
         textParts.push('[THINKING]\n' + turn.thinkingBlocks.join('\n\n'));
@@ -372,6 +339,18 @@ export class AnnotationPreprocessor {
       if (turn.textBlocks.length > 0) {
         textParts.push('[TEXT]\n' + turn.textBlocks.join('\n\n'));
       }
+
+      // Add tool call descriptions
+      if (turn.toolUseBlocks.length > 0) {
+        const toolDescs = turn.toolUseBlocks.map(t => {
+          const inputStr = JSON.stringify(t.input, null, 2);
+          return `[TOOL_USE: ${t.name}]\n${inputStr}`;
+        });
+        textParts.push(toolDescs.join('\n\n'));
+      }
+
+      // Skip turns with no content
+      if (textParts.length === 0) continue;
 
       const source: SourcePointers = {
         raw_file: this.rawFile,
@@ -382,71 +361,33 @@ export class AnnotationPreprocessor {
         is_sidechain: false,
       };
 
-      output.push({
+      // Add tool_use_ids if present
+      if (turn.toolUseBlocks.length > 0) {
+        source.tool_use_ids = turn.toolUseBlocks.map(t => t.id);
+      }
+
+      const toolSummary = this.buildToolSummary(turn, toolResultsIndex);
+
+      const record: AnnotationRecord = {
         session_id: this.sessionId,
         event_id: makeAssistantEventId(turn.requestId, turn.messageId),
-        actor_id: 'agent',
+        actor_id: 'assistant',
         actor_type: 'agent',
-        role: 'proxy',
-        unit_type: 'assistant_thought_text',
+        agent_kind: 'main',
+        unit_type: 'assistant_turn',
         source,
         timestamp: turn.timestamp,
         text_or_artifact_ref: {
           text: textParts.join('\n\n'),
         },
         labels: [],
-      });
-    }
-
-    // 3. Generate tool_exchange records
-    for (const [, exchange] of exchanges) {
-      // Build combined text
-      const textParts: string[] = [];
-
-      // Tool call info
-      textParts.push(`[TOOL_USE] ${exchange.toolName}`);
-      textParts.push(`Input: ${JSON.stringify(exchange.toolInput, null, 2)}`);
-
-      // Tool results
-      for (const result of exchange.toolResults) {
-        const prefix = result.isError ? '[TOOL_RESULT - ERROR]' : '[TOOL_RESULT]';
-        textParts.push(`${prefix}\n${result.content}`);
-      }
-
-      // Collect all line numbers and UUIDs
-      const lineNumbers = [exchange.toolUseLineNumber];
-      const uuids = [exchange.toolUseUuid];
-      for (const result of exchange.toolResults) {
-        lineNumbers.push(result.lineNumber);
-        uuids.push(result.uuid);
-      }
-
-      const source: SourcePointers = {
-        raw_file: this.rawFile,
-        raw_line_range: [Math.min(...lineNumbers), Math.max(...lineNumbers)],
-        raw_uuids: uuids,
-        request_id: exchange.requestId,
-        message_id: exchange.messageId,
-        tool_use_id: exchange.toolUseId,
-        tool_name: exchange.toolName,
-        is_sidechain: false,
       };
 
-      output.push({
-        session_id: this.sessionId,
-        event_id: makeToolExchangeEventId(exchange.toolUseId),
-        actor_id: `tool:${exchange.toolName}`,
-        actor_type: 'tool',
-        role: 'proxy',
-        unit_type: 'tool_exchange',
-        source,
-        timestamp: exchange.toolUseTimestamp,
-        text_or_artifact_ref: {
-          text: textParts.join('\n\n'),
-          tool_call_id: exchange.toolUseId,
-        },
-        labels: [],
-      });
+      if (toolSummary) {
+        record.tool_summary = toolSummary;
+      }
+
+      output.push(record);
     }
 
     // Sort by timestamp
@@ -478,7 +419,7 @@ if (require.main === module) {
   if (args.length < 1) {
     console.log('Usage: npx tsx src/lib/annotation/preprocessor.ts <input.jsonl> [output.jsonl]');
     console.log('');
-    console.log('Preprocesses Claude Code JSONL into annotation-ready format.');
+    console.log('Preprocesses Claude Code JSONL into annotation-ready format (v0.2 schema).');
     console.log('Focus: Main agent only (sidechains excluded).');
     process.exit(1);
   }
@@ -497,13 +438,17 @@ if (require.main === module) {
 
   console.log(`Generated ${records.length} annotation records:`);
   const byType = {
-    user_prompt: records.filter(r => r.unit_type === 'user_prompt').length,
-    assistant_thought_text: records.filter(r => r.unit_type === 'assistant_thought_text').length,
-    tool_exchange: records.filter(r => r.unit_type === 'tool_exchange').length,
+    user_turn: records.filter(r => r.unit_type === 'user_turn').length,
+    assistant_turn: records.filter(r => r.unit_type === 'assistant_turn').length,
   };
-  console.log(`  - user_prompt: ${byType.user_prompt}`);
-  console.log(`  - assistant_thought_text: ${byType.assistant_thought_text}`);
-  console.log(`  - tool_exchange: ${byType.tool_exchange}`);
+  console.log(`  - user_turn: ${byType.user_turn}`);
+  console.log(`  - assistant_turn: ${byType.assistant_turn}`);
+
+  // Tool summary stats
+  const withTools = records.filter(r => r.tool_summary && r.tool_summary.tool_calls.length > 0);
+  const totalToolCalls = withTools.reduce((sum, r) => sum + (r.tool_summary?.tool_calls.length || 0), 0);
+  console.log(`  - assistant_turns with tools: ${withTools.length}`);
+  console.log(`  - total tool calls: ${totalToolCalls}`);
 
   preprocessor.writeJsonl(records, outputPath);
   console.log(`\nWritten to: ${outputPath}`);

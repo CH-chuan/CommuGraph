@@ -1,7 +1,7 @@
 /**
- * Annotation Schema Types (v0.1)
+ * Annotation Schema Types (v0.2)
  *
- * TypeScript types matching annotation_schema_v01.yaml
+ * TypeScript types matching annotation_schema_v02.yaml
  * Used by the annotation preprocessor to generate intermediate JSONL for labeling.
  */
 
@@ -9,17 +9,18 @@
 // Unit Types
 // ============================================================================
 
-export type UnitType = 'assistant_thought_text' | 'tool_exchange' | 'user_prompt';
+export type UnitType = 'assistant_turn' | 'user_turn';
 
 // ============================================================================
 // Actor Types
 // ============================================================================
 
-export type ActorType = 'human' | 'agent' | 'tool';
+export type ActorType = 'human' | 'agent';
 export type RoleType = 'delegator' | 'proxy' | 'mixed' | 'unknown';
+export type AgentKind = 'main' | 'sub' | 'unknown';
 
 // ============================================================================
-// Label Definitions (from schema)
+// Label Definitions (from schema v02)
 // ============================================================================
 
 export type LabelId =
@@ -29,39 +30,23 @@ export type LabelId =
   // B. Action Execution Types
   | 'EXEC_COGNITIVE'
   | 'EXEC_DIGITAL'
-  | 'EXEC_PHYSICAL'
-  // C. Task Complexity Handling
-  | 'COMPLEXITY_UNCERTAINTY'
-  | 'COMPLEXITY_INTERDEPENDENCE'
-  | 'COMPLEXITY_DYNAMICS'
   // D. Delegation Mechanisms
-  | 'DELEGATION_APPRAISAL_CAPABILITY'
-  | 'DELEGATION_APPRAISAL_TRUST'
-  | 'DELEGATION_APPRAISAL_COMPATIBILITY'
+  | 'DELEGATION_APPRAISAL'
   | 'DELEGATION_DECISION'
-  | 'DELEGATION_ROLE_REVERSAL'
   | 'DELEGATION_NEGOTIATION'
   | 'DELEGATION_CONSTRAINT_SETTING'
   // E. Coordination & Oversight
   | 'COORD_MONITORING'
   | 'COORD_INTERVENTION'
   | 'COORD_STATE_UPDATING'
-  | 'COORD_ACCOUNTABILITY'
-  | 'COORD_PREDICTABILITY_ALIGNMENT'
-  | 'COORD_COMMON_UNDERSTANDING'
-  // F. Outcome States (mutually exclusive)
-  | 'OUTCOME_GOAL_ATTAINMENT'
-  | 'OUTCOME_GOAL_PROGRESS'
-  | 'OUTCOME_GOAL_FAILURE';
+  | 'COORD_COMMON_UNDERSTANDING';
 
 export type LabelFamily =
   | 'task_structuring'
   | 'execution'
-  | 'complexity'
   | 'delegation_appraisal'
   | 'delegation_distribution'
-  | 'coordination'
-  | 'outcome';
+  | 'coordination';
 
 // ============================================================================
 // Label Evidence
@@ -80,6 +65,25 @@ export interface LabelRecord {
 }
 
 // ============================================================================
+// Tool Summary (for assistant_turn)
+// ============================================================================
+
+export interface ToolCallSummary {
+  tool_use_id: string;
+  tool_name: string;
+  /** True if tool results indicate success (coarse) */
+  success?: boolean;
+  /** True if any matching tool_result has is_error=true */
+  is_error?: boolean;
+  /** Number of tool_result blocks for this tool_use_id */
+  result_count: number;
+}
+
+export interface ToolSummary {
+  tool_calls: ToolCallSummary[];
+}
+
+// ============================================================================
 // Source Traceability
 // ============================================================================
 
@@ -94,10 +98,8 @@ export interface SourcePointers {
   request_id?: string;
   /** API message ID (for assistant records) */
   message_id?: string;
-  /** Tool use ID (for tool_exchange units) */
-  tool_use_id?: string;
-  /** Tool name (for tool_exchange units) */
-  tool_name?: string;
+  /** All tool_use.id values emitted in this assistant turn */
+  tool_use_ids?: string[];
   /** Whether this is from a sidechain/sub-agent */
   is_sidechain?: boolean;
   /** Agent ID if from sidechain */
@@ -126,18 +128,20 @@ export interface AnnotationRecord {
   session_id: string;
   /** Event identifier (formatted per convention) */
   event_id: string;
-  /** Actor identifier (e.g., "human", "assistant", "tool:Bash") */
+  /** Actor identifier (e.g., "human", "assistant", "agent-{id}") */
   actor_id: string;
   /** Actor type classification */
   actor_type: ActorType;
-  /** Role in delegation relationship */
-  role?: RoleType;
+  /** Agent kind - only for actor_type=agent */
+  agent_kind?: AgentKind;
   /** Type of annotation unit */
   unit_type: UnitType;
   /** Source traceability pointers */
   source: SourcePointers;
   /** Optional timestamp (ISO-8601) */
   timestamp?: string;
+  /** Tool execution summary (only for assistant_turn) */
+  tool_summary?: ToolSummary;
   /** Reference to content */
   text_or_artifact_ref: TextOrArtifactRef;
   /** Labels (empty for preprocessing, filled during annotation) */
@@ -149,26 +153,18 @@ export interface AnnotationRecord {
 // ============================================================================
 
 /**
- * Generate event_id for assistant_thought_text unit.
- * Pattern: A:{request_id}:{message_id}
+ * Generate event_id for assistant_turn unit.
+ * Pattern: A:{request_id}:{message_id} or A::{message_id} if no request_id
  */
-export function makeAssistantEventId(requestId: string, messageId: string): string {
-  return `A:${requestId}:${messageId}`;
+export function makeAssistantEventId(requestId: string | undefined, messageId: string): string {
+  return `A:${requestId || ''}:${messageId}`;
 }
 
 /**
- * Generate event_id for tool_exchange unit.
- * Pattern: T:{tool_use_id}
- */
-export function makeToolExchangeEventId(toolUseId: string): string {
-  return `T:${toolUseId}`;
-}
-
-/**
- * Generate event_id for user_prompt unit.
+ * Generate event_id for user_turn unit.
  * Pattern: U:{raw_uuid}
  */
-export function makeUserPromptEventId(rawUuid: string): string {
+export function makeUserTurnEventId(rawUuid: string): string {
   return `U:${rawUuid}`;
 }
 
