@@ -1,6 +1,6 @@
 # CommuGraph User Interactions Reference
 
-**Last Updated**: 2025-12-12
+**Last Updated**: 2025-12-13
 
 This document describes all supported user interactions in the CommuGraph visualization interface.
 
@@ -8,14 +8,65 @@ This document describes all supported user interactions in the CommuGraph visual
 
 ## Table of Contents
 
-1. [File Upload](#file-upload)
-2. [Graph View (Center Panel)](#graph-view-center-panel)
-3. [Claude Code Workflow View](#claude-code-workflow-view)
-4. [Annotation View (Claude Code)](#annotation-view-claude-code)
-5. [Chat Log (Left Panel)](#chat-log-left-panel)
-6. [Timeline Controls (Bottom)](#timeline-controls-bottom)
-7. [Gantt Chart Timeline](#gantt-chart-timeline)
-8. [Cross-Component Synchronization](#cross-component-synchronization)
+1. [Panel Layout](#panel-layout)
+2. [File Upload](#file-upload)
+3. [Graph View (Center Panel)](#graph-view-center-panel)
+4. [Claude Code Workflow View](#claude-code-workflow-view)
+5. [Annotation View (Claude Code)](#annotation-view-claude-code)
+6. [Chat Log (Left Panel)](#chat-log-left-panel)
+7. [Timeline Controls (Bottom)](#timeline-controls-bottom)
+8. [Gantt Chart Timeline](#gantt-chart-timeline)
+9. [Cross-Component Synchronization](#cross-component-synchronization)
+
+---
+
+## Panel Layout
+
+CommuGraph uses a three-panel layout that can be resized horizontally by dragging the dividers between panels.
+
+### Layout Structure
+
+```
+┌─────────────┬───────────────────────────┬─────────────┐
+│   Chat Log  │     Graph / Workflow      │   Metrics   │
+│   (Left)    │        (Center)           │   (Right)   │
+│             │                           │             │
+└─────────────┴───────────────────────────┴─────────────┘
+       ↕               ↕                        ↕
+    15-50%          30%+ min                 15-50%
+```
+
+**Note**: The right panel (Metrics) only appears for AutoGen logs. Claude Code logs use a two-panel layout.
+
+### Resizable Panels
+
+Each panel can be resized by dragging the vertical dividers between them.
+
+**Visual Elements:**
+- Vertical resize handles (2px wide) between panels
+- Grip icon (⋮) centered on each handle
+- Blue highlight on hover/drag
+
+**Interactions:**
+
+| Action | Behavior | Visual Feedback |
+|--------|----------|-----------------|
+| **Hover divider** | Cursor changes to col-resize | Handle turns blue, grip icon turns white |
+| **Drag divider** | Resizes adjacent panels | Panels resize in real-time |
+| **Release** | Panels maintain new sizes | Sizes persist during session |
+
+**Panel Constraints:**
+
+| Panel | Default Size | Min Size | Max Size |
+|-------|--------------|----------|----------|
+| **Left (Chat Log)** | 25% | 15% | 50% |
+| **Center (Graph)** | 50% (AutoGen) / 75% (Claude Code) | 30% | Flexible |
+| **Right (Metrics)** | 25% | 15% | 50% |
+
+**Notes:**
+- Panel sizes are percentage-based and respond to window resizing
+- The center panel expands/contracts to fill remaining space
+- Sizes reset on page refresh (not persisted to storage)
 
 ---
 
@@ -485,6 +536,7 @@ The Annotation View includes a custom vertical scrollbar that syncs with the Rea
 - Expanded state shows full content with vertical scrollbar if needed
 - Max height: 256px (16rem)
 - Prevents text selection during double-click (`select-none`)
+- **Independent expansion**: Multiple cards can be expanded simultaneously. Expanding one card does NOT collapse previously expanded cards. Each card maintains its own expanded/collapsed state until explicitly toggled.
 
 ---
 
@@ -787,14 +839,11 @@ The chat log pulse animation (`animate-pulse-highlight`) is triggered when:
    - Arrow Left/Right: Step backward/forward
    - Home/End: Jump to first/last step
 
-2. **Resizable Panels**:
-   - Drag column dividers to resize Chat Log, Graph, Insights
-
-3. **Graph Interactions**:
+2. **Graph Interactions**:
    - Click node to show agent details in Insights panel
    - Right-click edge to filter by communication pair
 
-4. **Export**:
+3. **Export**:
    - Download graph as PNG/SVG
    - Export timeline as video/GIF
 

@@ -103,8 +103,8 @@ export function ChatLog() {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const highlightedMessageRef = useRef<HTMLDivElement>(null);
-  const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
-    null
+  const [expandedMessageIds, setExpandedMessageIds] = useState<Set<string>>(
+    new Set()
   );
   const [animatingStepIndex, setAnimatingStepIndex] = useState<number | null>(null);
 
@@ -454,7 +454,7 @@ export function ChatLog() {
                 : null;
 
               const messageId = `${msg.stepIndex}-${index}`;
-              const isExpanded = expandedMessageId === messageId;
+              const isExpanded = expandedMessageIds.has(messageId);
               // Show expand button for messages longer than 80 chars or if they have line breaks
               const isLongMessage =
                 msg.content.length > 80 || msg.content.includes('\n');
@@ -531,7 +531,15 @@ export function ChatLog() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setExpandedMessageId(isExpanded ? null : messageId);
+                          setExpandedMessageIds((prev) => {
+                            const next = new Set(prev);
+                            if (isExpanded) {
+                              next.delete(messageId);
+                            } else {
+                              next.add(messageId);
+                            }
+                            return next;
+                          });
                         }}
                         className="mt-2 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline font-semibold transition-colors"
                       >
