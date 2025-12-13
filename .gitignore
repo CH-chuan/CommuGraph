@@ -1,0 +1,148 @@
+# ================================
+#  Archived Code (Migration Backup)
+# ================================
+backend.bak/
+frontend.bak/
+
+# Figma prototype for reference only
+figma_prototype/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# samples
+public/samples/
+
+# claude code
+.claude
+
+# ================================
+#  Next.js
+# ================================
+.next/
+out/
+build/
+.swc/
+
+
+# ================================
+#  Node.js / npm
+# ================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Package manager locks (keep package-lock.json)
+yarn.lock
+pnpm-lock.yaml
+
+
+# ================================
+#  TypeScript
+# ================================
+*.tsbuildinfo
+next-env.d.ts
+
+
+# ================================
+#  Logs, Temp, Debug Files
+# ================================
+*.log
+*.tmp
+*.out
+*.err
+*.pid
+temp/
+tmp/
+
+
+# ================================
+#  Testing & Coverage
+# ================================
+coverage/
+.coverage
+coverage.xml
+htmlcov/
+.nyc_output/
+
+
+# ================================
+#  Data Files (Do Not Track Logs)
+# ================================
+# Model outputs or intermediate datasets
+data/
+**/data/
+datasets/
+examples/logs/
+*.jsonl
+*.jsonl.gz
+*.json.gz
+*.pickle
+*.pkl
+
+
+# ================================
+#  IDE / Editor Files
+# ================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs (WebStorm, etc.)
+.idea/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# General editor settings
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+
+# ================================
+#  Visualization Outputs
+# ================================
+figures/
+exports/
+visualizations/
+*.png
+*.svg
+
+
+# ================================
+#  Cache
+# ================================
+.cache/
+*.cache
+
+# Vercel
+.vercel
+
+# Turbo
+.turbo
+
+# Claude Code
+.specstory/
+
+# whitelist sample data for testing# ================================
+#  Allow selected sample jsonl files
+# ================================
+
+# Re-allow the samples directory structure
+!public/samples/
+!public/samples/autogen/
+!public/samples/claudecode/
+
+# Allow jsonl files only in these folders
+!public/samples/autogen/**/*.jsonl
+!public/samples/claudecode/**/*.jsonl

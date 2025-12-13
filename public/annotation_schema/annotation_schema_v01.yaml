@@ -1,0 +1,563 @@
+schema_version: "0.1"
+schema_name: "delegation_interaction_codebook_baird_maruping_2021"
+source:
+  paper: "Baird & Maruping (2021) MISQ"
+  grounding:
+    - "Task attributes: action requirements (cognitive/digital/physical), complexity (uncertainty/interdependence/dynamics), decomposability"
+    - "Delegation mechanisms: appraisal, distribution, coordination"
+    - "Outcomes: goal attainment, progress, failure"
+
+annotation_unit:
+  name: "content_block_group"
+  description: >
+    A taggable unit built from the raw Claude Code JSONL by grouping specific content blocks.
+
+    We intentionally ignore record types like file-history-snapshot and queue-operation.
+
+    Unit construction rules (for the intermediate JSONL used for labeling):
+      1) assistant_thought_text: group ALL assistant "thinking" + "text" blocks that belong to the
+         same model turn (same requestId + message.id), excluding any tool_use blocks.
+      2) tool_exchange: group ONE assistant tool_use block (identified by tool_use.id) together
+         with ALL corresponding tool_result blocks where tool_result.tool_use_id == tool_use.id.
+         (Tool results live inside type:"user" records, but are NOT annotated separately.)
+      3) user_prompt: a user-typed prompt where user.message.content is a string.
+
+    If one model turn contains multiple tool_use blocks, each tool_use becomes its own tool_exchange unit.
+    The remaining thinking/text blocks for that turn remain in assistant_thought_text.
+  unit_types:
+    - assistant_thought_text
+    - tool_exchange
+    - user_prompt
+  id_fields:
+    - session_id
+    - event_id
+    - actor_id
+
+event_id_convention:
+  description: >
+    Canonical event_id formats for the intermediate JSONL used for labeling.
+    The goal is stability + easy joins back to raw records.
+  formats:
+    assistant_thought_text:
+      pattern: "A:{request_id}:{message_id}"
+      required_source_fields: ["request_id", "message_id"]
+      notes:
+        - "One per model turn grouping (requestId + message.id), excluding tool_use blocks."
+    tool_exchange:
+      pattern: "T:{tool_use_id}"
+      required_source_fields: ["tool_use_id"]
+      notes:
+        - "One per tool call; groups that tool_use with all matching tool_result blocks."
+    user_prompt:
+      pattern: "U:{raw_uuid}"
+      required_source_fields: ["raw_uuids"]
+      notes:
+        - "Use the first element of source.raw_uuids as raw_uuid."
+
+actors:
+  actor_types:
+    - human
+    - agent
+    - tool
+  role_types:
+    - delegator
+    - proxy
+    - mixed
+    - unknown
+
+labeling_rules:
+  multi_label: true
+  mutually_exclusive_groups:
+    - group_id: "outcome_state"
+      labels: ["OUTCOME_GOAL_ATTAINMENT", "OUTCOME_GOAL_PROGRESS", "OUTCOME_GOAL_FAILURE"]
+      rule: "Choose at most one outcome state per episode (or none if outcome not expressed)."
+  priority_guidance:
+    - "If rights/responsibilities shift, include a DELEGATION_* label."
+    - "If the episode breaks down a task, include TASK_DECOMPOSITION."
+    - "If the episode assigns a decomposed part, include TASK_SUBTASK_DELEGATION."
+    - "If monitoring or overriding is present, include COORDINATION_* labels."
+  evidence_requirement:
+    - "Prefer explicit cues in text/logs (e.g., 'you take over', 'I’ll review', 'stop')."
+    - "Tool calls count as evidence for DIGITAL_EXECUTION unless purely observational."
+
+labels:
+  # A. Task Structuring & Work Decomposition
+  - id: "TASK_DECOMPOSITION"
+    name: "Problem decomposition"
+    family: "task_structuring"
+    definition: "Break a goal/task into smaller components, steps, or phases."
+    include_when:
+      - "Enumerates subtasks/steps/modules"
+      - "Reframes a goal into a structured plan"
+    exclude_when:
+      - "Actually assigning ownership of a subtask (use TASK_SUBTASK_DELEGATION)"
+    cues:
+      - "split into"
+      - "step 1/2/3"
+      - "phases"
+      - "modules"
+      - "first...then..."
+    examples:
+      positive:
+        - "Let’s split this refactor into parser, graph builder, renderer."
+      negative:
+        - "Agent B, handle the parser." # subtask delegation
+    output_fields:
+      optional:
+        decomposition:
+          type: "list[string]"
+          description: "Named subtasks/components if present."
+
+  - id: "TASK_SUBTASK_DELEGATION"
+    name: "Subtask delegation"
+    family: "task_structuring"
+    definition: "Delegate a specific decomposed subtask to another agent/component."
+    include_when:
+      - "Assigns a subtask owner after decomposition"
+      - "Creates/dispatches a sub-agent with a scoped task"
+    exclude_when:
+      - "General delegation of entire task (use DELEGATION_FULL)"
+      - "Advice-seeking without transfer (use DELEGATION_APPRAISAL_*)"
+    cues:
+      - "you handle"
+      - "assign"
+      - "delegate this part"
+      - "Agent X do"
+      - "Task tool spawn"
+    examples:
+      positive:
+        - "Agent B, handle the log parser; Agent C, build the UI."
+    output_fields:
+      optional:
+        assignee_actor_id:
+          type: "string"
+        subtask_name:
+          type: "string"
+
+  # B. Action Execution Types
+  - id: "EXEC_COGNITIVE"
+    name: "Cognitive execution"
+    family: "execution"
+    definition: "Reasoning/planning/abstraction/model-building actions."
+    include_when:
+      - "Designing approach/algorithm/architecture"
+      - "Reasoning about edge cases or causal structure"
+    exclude_when:
+      - "Pure code edits without reasoning content (may still co-occur with EXEC_DIGITAL)"
+    cues:
+      - "we should"
+      - "because"
+      - "consider"
+      - "tradeoff"
+      - "design"
+    examples:
+      positive:
+        - "Because timestamps are async, we need a DAG ordering rule."
+
+  - id: "EXEC_DIGITAL"
+    name: "Digital execution"
+    family: "execution"
+    definition: "Digital actions that change or run computational artifacts (code/config/scripts)."
+    include_when:
+      - "Writes/edits code or config"
+      - "Runs tests/scripts/build"
+      - "Tool calls that modify files"
+    cues:
+      - "implemented"
+      - "commit"
+      - "run tests"
+      - "npm run"
+      - "pip install"
+    examples:
+      positive:
+        - "I added a parser function and ran the unit tests."
+    output_fields:
+      optional:
+        tool_name:
+          type: "string"
+        files_touched:
+          type: "list[string]"
+        command:
+          type: "string"
+
+  - id: "EXEC_PHYSICAL"
+    name: "Physical execution"
+    family: "execution"
+    definition: "Physical actuation or control actions (rare for coding agents)."
+    include_when:
+      - "Robot/IoT/vehicle actions that change physical state"
+    cues:
+      - "actuate"
+      - "move"
+      - "turn"
+      - "weld"
+
+  # C. Task Complexity Handling
+  - id: "COMPLEXITY_UNCERTAINTY"
+    name: "Execution under uncertainty"
+    family: "complexity"
+    definition: >
+      Action/decision made with uncertainty about requirements, ground truth, or externally verifiable facts
+      (not merely polite hedging or generic uncertainty words).
+    include_when:
+      - "Spec unclear, multiple valid interpretations that change the work"
+      - "Ground truth unknown (e.g., file format variability, missing constraints, unknown environment state)"
+      - "Probabilistic/heuristic approach explicitly chosen due to unknowns"
+    cues:
+      - "might"
+      - "unclear"
+      - "ambiguous"
+      - "not sure"
+      - "likely"
+    examples:
+      positive:
+        - "The log format might vary; we’ll handle multiple cases."
+
+  - id: "COMPLEXITY_INTERDEPENDENCE"
+    name: "Interdependent execution"
+    family: "complexity"
+    definition: "Work depends on other tasks/agents/states; sequencing or shared state matters."
+    include_when:
+      - "Explicit dependency management"
+      - "Waiting on other agent output"
+      - "Shared schema/state coordination"
+    cues:
+      - "depends on"
+      - "after Agent X"
+      - "blocked by"
+      - "shared schema"
+    examples:
+      positive:
+        - "This depends on the parser schema; don’t finalize renderer yet."
+
+  - id: "COMPLEXITY_DYNAMICS"
+    name: "Dynamic execution"
+    family: "complexity"
+    definition: "Plan adapts in response to changing environment, feedback, or new information."
+    include_when:
+      - "Iterative re-planning after errors or new constraints"
+      - "Responding to failing tests / new user instructions"
+    cues:
+      - "since"
+      - "now that"
+      - "update plan"
+      - "revise"
+      - "rerun"
+    examples:
+      positive:
+        - "Since tests failed, we’ll revise the parsing rule."
+
+  # D. Delegation Mechanisms
+  - id: "DELEGATION_APPRAISAL_CAPABILITY"
+    name: "Capability appraisal"
+    family: "delegation_appraisal"
+    definition: "Evaluate whether another agent can perform a task (skills/resources)."
+    include_when:
+      - "Questions/assessments of competence or fit"
+    cues:
+      - "can you"
+      - "able to"
+      - "capable"
+      - "best suited"
+    examples:
+      positive:
+        - "Can you handle the DAG reconstruction logic?"
+
+  - id: "DELEGATION_APPRAISAL_TRUST"
+    name: "Trust appraisal"
+    family: "delegation_appraisal"
+    definition: "Evaluate reliability/safety/expected performance of another agent."
+    include_when:
+      - "Mentions trust, risk, reliability, accuracy concerns"
+    cues:
+      - "trust"
+      - "reliable"
+      - "risk"
+      - "safe"
+      - "accurate"
+
+  - id: "DELEGATION_APPRAISAL_COMPATIBILITY"
+    name: "Compatibility appraisal"
+    family: "delegation_appraisal"
+    definition: "Assess compatibility of decision process/model/preferences between agents."
+    include_when:
+      - "Discusses alignment of approach/style/decision model"
+    cues:
+      - "compatible"
+      - "align"
+      - "same approach"
+      - "your style vs mine"
+
+  - id: "DELEGATION_DECISION"
+    name: "Delegation decision"
+    family: "delegation_distribution"
+    definition: "Explicit decision to transfer rights/responsibilities for execution/outcomes."
+    include_when:
+      - "States transfer of ownership/authority"
+    cues:
+      - "I’ll let you"
+      - "you take over"
+      - "delegate"
+      - "hand off"
+    examples:
+      positive:
+        - "You take over the refactor."
+
+  - id: "DELEGATION_ROLE_REVERSAL"
+    name: "Role reversal (agent → human delegation)"
+    family: "delegation_distribution"
+    definition: "Agent delegates back to human for info/decision/help."
+    include_when:
+      - "Agent asks user to decide/clarify/confirm to proceed"
+    cues:
+      - "please confirm"
+      - "which do you prefer"
+      - "I need clarification"
+      - "what is the requirement"
+    examples:
+      positive:
+        - "Which schema should we treat as canonical?"
+
+  - id: "DELEGATION_NEGOTIATION"
+    name: "Delegation negotiation"
+    family: "delegation_distribution"
+    definition: "Back-and-forth to agree on scope, responsibilities, or transfer terms."
+    include_when:
+      - "Conditional delegation"
+      - "Negotiates responsibilities/authority boundaries"
+    cues:
+      - "if you"
+      - "as long as"
+      - "I can do X provided Y"
+      - "who will handle"
+    examples:
+      positive:
+        - "I can implement this if you confirm the log ordering rule."
+
+  - id: "DELEGATION_CONSTRAINT_SETTING"
+    name: "Constraint setting"
+    family: "delegation_distribution"
+    definition: "Set explicit boundaries/rules to prevent undesired actions/outcomes."
+    include_when:
+      - "Do not change X"
+      - "Must keep compatibility/performance/security"
+    cues:
+      - "do not"
+      - "must"
+      - "constraint"
+      - "keep backward compatible"
+    examples:
+      positive:
+        - "Do not change the public API; keep existing endpoints."
+
+  # E. Coordination & Oversight
+  - id: "COORD_MONITORING"
+    name: "Monitoring"
+    family: "coordination"
+    definition: "Observe delegated execution without altering it."
+    include_when:
+      - "Requests status/progress"
+      - "Reads outputs/logs to check"
+    cues:
+      - "status?"
+      - "show progress"
+      - "how’s it going"
+      - "let me see logs"
+
+  - id: "COORD_INTERVENTION"
+    name: "Intervention"
+    family: "coordination"
+    definition: "Override/correct direction during delegated execution."
+    include_when:
+      - "Stops or changes agent actions"
+      - "Explicitly reverses a decision"
+    cues:
+      - "stop"
+      - "undo"
+      - "don’t do that"
+      - "change approach"
+
+  - id: "COORD_STATE_UPDATING"
+    name: "State updating"
+    family: "coordination"
+    definition: "Provide status updates to maintain shared situational awareness."
+    include_when:
+      - "Reports completion/progress/failure"
+      - "Communicates new state or artifacts"
+    cues:
+      - "done"
+      - "completed"
+      - "tests passed"
+      - "I updated"
+    output_fields:
+      optional:
+        progress_percent:
+          type: "number"
+        status:
+          type: "string"
+          enum: ["started", "in_progress", "blocked", "completed", "failed"]
+
+  - id: "COORD_ACCOUNTABILITY"
+    name: "Accountability assignment"
+    family: "coordination"
+    definition: "Explicitly assigns responsibility for completion/outcomes."
+    include_when:
+      - "Defines who owns what"
+      - "Assigns responsibility for failures/success"
+    cues:
+      - "you own"
+      - "I’m responsible"
+      - "accountable"
+      - "owner"
+
+  - id: "COORD_PREDICTABILITY_ALIGNMENT"
+    name: "Predictability alignment"
+    family: "coordination"
+    definition: "Align on sequence/order of tasks and expected workflow."
+    include_when:
+      - "Defines order of operations"
+      - "Sets expectations on next steps"
+    cues:
+      - "first/then"
+      - "next"
+      - "after that"
+      - "sequence"
+
+  - id: "COORD_COMMON_UNDERSTANDING"
+    name: "Common understanding alignment"
+    family: "coordination"
+    definition: "Align shared meaning of terms/schemas/goals."
+    include_when:
+      - "Defines terminology"
+      - "Clarifies what counts as success or what a concept means"
+    cues:
+      - "by X I mean"
+      - "define"
+      - "clarify"
+      - "interpret as"
+
+  # F. Outcome States (mutually exclusive)
+  - id: "OUTCOME_GOAL_ATTAINMENT"
+    name: "Goal attainment"
+    family: "outcome"
+    definition: "Explicitly indicates goal achieved or task completed successfully."
+    include_when:
+      - "Success confirmed"
+      - "Acceptance criteria met"
+    cues:
+      - "completed"
+      - "done"
+      - "works"
+      - "resolved"
+      - "passed all tests"
+
+  - id: "OUTCOME_GOAL_PROGRESS"
+    name: "Goal progress"
+    family: "outcome"
+    definition: "Explicitly indicates partial progress toward goal without completion."
+    include_when:
+      - "Partial completion"
+      - "Milestone reached"
+    cues:
+      - "progress"
+      - "partially"
+      - "next step is"
+      - "milestone"
+
+  - id: "OUTCOME_GOAL_FAILURE"
+    name: "Goal failure"
+    family: "outcome"
+    definition: "Explicitly indicates failure, inability, or abandonment."
+    include_when:
+      - "Task abandoned"
+      - "Failure confirmed"
+    cues:
+      - "failed"
+      - "can’t"
+      - "doesn’t work"
+      - "abandon"
+      - "blocked permanently"
+
+record_template:
+  type: "object"
+  required:
+    - session_id
+    - event_id
+    - actor_id
+    - actor_type
+    - unit_type
+    - source
+    - text_or_artifact_ref
+    - labels
+  properties:
+    session_id: { type: "string" }
+    event_id: { type: "string" }
+    actor_id: { type: "string" }
+    actor_type: { type: "string", enum: ["human", "agent", "tool"] }
+    role: { type: "string", enum: ["delegator", "proxy", "mixed", "unknown"] }
+    unit_type:
+      type: "string"
+      enum: ["assistant_thought_text", "tool_exchange", "user_prompt"]
+    source:
+      type: "object"
+      description: >
+        Pointers back to raw JSONL for traceability. These fields are meant to be populated in the
+        intermediate JSONL (created prior to labeling).
+      properties:
+        raw_file:
+          type: "string"
+          description: "Path to the source JSONL file (main or agent-*.jsonl)."
+        raw_line_range:
+          type: "array"
+          description: "[startLine, endLine] in the raw JSONL file if known."
+          items: { type: "integer" }
+        raw_uuids:
+          type: "array"
+          description: "One or more raw record uuids contributing to this unit (if present)."
+          items: { type: "string" }
+        request_id: { type: "string" }
+        message_id: { type: "string" }
+        tool_use_id: { type: "string" }
+        tool_name: { type: "string" }
+        is_sidechain: { type: "boolean" }
+        agent_id: { type: "string" }
+    timestamp:
+      type: "string"
+      description: "Optional. If present, ISO-8601 recommended (e.g., unit start timestamp)."
+    text_or_artifact_ref:
+      type: "object"
+      description: "Reference to message text or tool artifact."
+      properties:
+        text: { type: "string" }
+        tool_call_id: { type: "string" }
+        artifact_path: { type: "string" }
+    labels:
+      type: "array"
+      items:
+        type: "object"
+        required: ["id"]
+        properties:
+          id: { type: "string" }
+          confidence: { type: "number", minimum: 0.0, maximum: 1.0 }
+          evidence:
+            type: "object"
+            properties:
+              quote: { type: "string" }
+              cue: { type: "string" }
+          fields:
+            type: "object"
+            description: "Label-specific output fields, if any."
+
+validation_checks:
+  - id: "outcome_mutex"
+    description: "No more than one OUTCOME_* label per episode."
+  - id: "unknown_label"
+    description: "All label ids must exist in schema labels list."
+  - id: "required_fields_present"
+    description: "Record contains all required properties."
+  - id: "unit_type_required_source_fields"
+    description: >
+      Minimal source pointers for unit types:
+        - assistant_thought_text should have (request_id, message_id) OR raw_uuids.
+        - tool_exchange should have tool_use_id (and usually tool_name).
+        - user_prompt should have raw_uuids.
