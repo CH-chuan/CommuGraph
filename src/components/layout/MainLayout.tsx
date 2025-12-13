@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * MainLayout - 3-column application layout
+ * MainLayout - 3-column application layout with resizable panels
  *
  * Left: Chat Log with cross-highlighting
  * Center: Graph Canvas (Topology/Sequence views) + Timeline Controls
@@ -10,6 +10,7 @@
  * For Claude Code logs, shows WorkflowView or AnnotationView with tab toggle
  */
 
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { GraphViewWrapper } from '@/components/graph/GraphViewWrapper';
 import { TimelineControls } from '@/components/graph/TimelineControls';
 import { ChatLog } from '@/components/chat/ChatLog';
@@ -17,7 +18,18 @@ import { WorkflowViewWrapper, WorkflowTimelineControls } from '@/components/work
 import { AnnotationViewWrapper } from '@/components/annotation';
 import { AutoGenMetricsPanel } from '@/components/insights/AutoGenMetricsPanel';
 import { useAppContext } from '@/context/app-context';
-import { GitBranch, Tag } from 'lucide-react';
+import { GitBranch, Tag, GripVertical } from 'lucide-react';
+
+/**
+ * Resize Handle Component
+ */
+function ResizeHandle() {
+  return (
+    <PanelResizeHandle className="group w-2 bg-slate-200 hover:bg-blue-400 active:bg-blue-500 transition-colors flex items-center justify-center cursor-col-resize">
+      <GripVertical className="w-3 h-3 text-slate-400 group-hover:text-white transition-colors" />
+    </PanelResizeHandle>
+  );
+}
 
 /**
  * View Mode Tabs for Claude Code
@@ -62,41 +74,52 @@ export function MainLayout() {
   const isClaudeCode = framework === 'claudecode';
 
   return (
-    <div className="flex-1 flex overflow-hidden">
+    <PanelGroup direction="horizontal" className="flex-1">
       {/* Left Panel - Chat Log */}
-      <div className="w-1/4 border-r bg-slate-50 overflow-hidden">
-        <ChatLog />
-      </div>
+      <Panel defaultSize={25} minSize={15} maxSize={50}>
+        <div className="h-full bg-slate-50 overflow-hidden">
+          <ChatLog />
+        </div>
+      </Panel>
+
+      <ResizeHandle />
 
       {/* Center Panel - Graph Canvas / Workflow View / Annotation View + Timeline */}
-      <div className="flex-1 flex flex-col">
-        {/* View Mode Tabs (only for Claude Code) */}
-        {isClaudeCode && <ViewModeTabs />}
+      <Panel defaultSize={isClaudeCode ? 75 : 50} minSize={30}>
+        <div className="h-full flex flex-col">
+          {/* View Mode Tabs (only for Claude Code) */}
+          {isClaudeCode && <ViewModeTabs />}
 
-        {/* Main View Area */}
-        <div className="flex-1 overflow-hidden">
-          {isClaudeCode ? (
-            viewMode === 'annotation' ? (
-              <AnnotationViewWrapper />
+          {/* Main View Area */}
+          <div className="flex-1 overflow-hidden">
+            {isClaudeCode ? (
+              viewMode === 'annotation' ? (
+                <AnnotationViewWrapper />
+              ) : (
+                <WorkflowViewWrapper />
+              )
             ) : (
-              <WorkflowViewWrapper />
-            )
-          ) : (
-            <GraphViewWrapper />
-          )}
-        </div>
+              <GraphViewWrapper />
+            )}
+          </div>
 
-        {/* Timeline controls (only for workflow view) */}
-        {isClaudeCode && viewMode === 'workflow' && <WorkflowTimelineControls />}
-        {!isClaudeCode && <TimelineControls />}
-      </div>
+          {/* Timeline controls (only for workflow view) */}
+          {isClaudeCode && viewMode === 'workflow' && <WorkflowTimelineControls />}
+          {!isClaudeCode && <TimelineControls />}
+        </div>
+      </Panel>
 
       {/* Right Panel - Graph Metrics (only for non-Claude Code) */}
       {!isClaudeCode && (
-        <div className="w-1/4 border-l bg-slate-50 overflow-hidden">
-          <AutoGenMetricsPanel />
-        </div>
+        <>
+          <ResizeHandle />
+          <Panel defaultSize={25} minSize={15} maxSize={50}>
+            <div className="h-full bg-slate-50 overflow-hidden">
+              <AutoGenMetricsPanel />
+            </div>
+          </Panel>
+        </>
       )}
-    </div>
+    </PanelGroup>
   );
 }

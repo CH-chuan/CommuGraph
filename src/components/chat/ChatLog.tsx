@@ -243,10 +243,11 @@ export function ChatLog() {
         return `sub-${agentIdShort}-${seq}`;
       };
 
-      // Filter nodes based on showSubAgentMessages toggle
-      const filteredNodes = showSubAgentMessages
+      // Filter nodes based on showSubAgentMessages toggle (exclude session start nodes)
+      const filteredNodes = (showSubAgentMessages
         ? workflow.nodes
-        : workflow.nodes.filter((node) => node.laneId === 'main');
+        : workflow.nodes.filter((node) => node.laneId === 'main')
+      ).filter((node) => !node.isSessionStart);
 
       // Extract messages from workflow nodes
       const allMessages: ChatMessage[] = filteredNodes.map((node) => {
@@ -400,7 +401,11 @@ export function ChatLog() {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-semibold text-lg">Chat Log</h3>
-            <p className="text-xs text-slate-500">{messages.length} messages</p>
+            <p className="text-xs text-slate-500">
+              {isAnnotationView && annotationData?.total
+                ? `${annotationData.total} records`
+                : `${messages.length} messages`}
+            </p>
           </div>
           {/* Sub-agent toggle - only show for Claude Code */}
           {isClaudeCode && (

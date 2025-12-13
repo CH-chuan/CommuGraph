@@ -7,6 +7,7 @@
  * This wrapper uses dynamic import with ssr: false.
  */
 
+import { useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useWorkflowData } from '@/hooks/use-workflow-data';
 import { useAppContext } from '@/context/app-context';
@@ -29,8 +30,18 @@ function WorkflowLoadingState() {
 }
 
 export function WorkflowViewWrapper() {
-  const { graphId } = useAppContext();
+  const { graphId, setMainAgentStepCount } = useAppContext();
   const { data, isLoading, isError, error } = useWorkflowData(graphId);
+
+  // Update mainAgentStepCount based on actual workflow nodes (excluding session start)
+  useEffect(() => {
+    if (data?.workflow?.nodes) {
+      const mainAgentNodes = data.workflow.nodes.filter(
+        (n) => n.laneId === 'main' && !n.isSessionStart
+      );
+      setMainAgentStepCount(mainAgentNodes.length);
+    }
+  }, [data?.workflow?.nodes, setMainAgentStepCount]);
 
   if (!graphId) {
     return (
