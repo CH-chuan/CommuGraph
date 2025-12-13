@@ -14,6 +14,8 @@ At the current stage, CommuGraph focuses on **log ingestion + visualization + na
 ### Installation
 
 ```bash
+git clone https://github.com/CH-chuan/CommuGraph.git
+cd CommuGraph
 npm install
 ```
 
