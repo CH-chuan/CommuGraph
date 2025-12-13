@@ -14,6 +14,9 @@ figma_prototype/
 .env.test.local
 .env.production.local
 
+# samples
+public/samples
+
 
 # claude code
 .claude

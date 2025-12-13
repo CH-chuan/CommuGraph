@@ -200,13 +200,10 @@ export function PreFlightModal({ open, onClose }: PreFlightModalProps) {
               <Input
                 id="subAgentDir"
                 type="text"
-                placeholder="public/samples/Users-harrywang-sandbox-paperfox"
+                placeholder="input the path to the sub-agent files"
                 value={subAgentDir}
                 onChange={(e) => setSubAgentDir(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                Path to search for sub-agent files if not uploaded. Leave empty to use default.
-              </p>
             </div>
           )}
 
