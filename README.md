@@ -1,6 +1,6 @@
 # CommuGraph
 
-CommuGraph is a **process-mining-inspired** analytics tool for **multi-agent chat logs**. It turns conversation traces (e.g. AutoGen, Claude Code) into an interactive, time-aware graph so you can review **agent-to-agent interactions**, **tool execution traces**, and **session-level metrics**.
+CommuGraph is a analytics tool for **multi-agent chat logs**. It turns conversation traces (e.g. AutoGen, Claude Code) into an interactive, time-aware graph so you can review **agent-to-agent interactions**, **tool execution traces**, and **session-level metrics**.
 
 At the current stage, CommuGraph focuses on **log ingestion + visualization + navigation** (not full process mining yet).
 
