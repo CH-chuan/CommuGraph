@@ -12,6 +12,7 @@ import { useMemo, useRef, useEffect, useState } from 'react';
 import { useAppContext } from '@/context/app-context';
 import { useGraphData } from '@/hooks/use-graph-data';
 import { useWorkflowData } from '@/hooks/use-workflow-data';
+import { useAnnotationData } from '@/hooks/use-annotation-data';
 import { getAgentColor } from '@/utils/graph-adapters';
 import { formatSubAgentName, extractAgentIdFromLaneId } from '@/utils/agent-naming';
 import { MessageSquare, ArrowRight, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
@@ -93,6 +94,10 @@ export function ChatLog() {
   const { data: workflowData, isLoading: workflowLoading } = useWorkflowData(
     isClaudeCode ? graphId : null // Only fetch for Claude Code
   );
+  // Fetch annotation data for annotation view to sync step numbers
+  const { data: annotationData } = useAnnotationData(
+    isAnnotationView ? graphId : null
+  );
 
   const isLoading = isClaudeCode ? workflowLoading : graphLoading;
 
@@ -102,6 +107,64 @@ export function ChatLog() {
     null
   );
   const [animatingStepIndex, setAnimatingStepIndex] = useState<number | null>(null);
+
+  // Build mapping from workflow stepIndex to annotation sequenceIndex for annotation view
+  const stepToAnnotationIndexMap = useMemo(() => {
+    const map = new Map<number, number>();
+
+    if (!isAnnotationView || !annotationData?.annotations || !workflowData?.workflow) {
+      return map;
+    }
+
+    const workflowNodes = workflowData.workflow.nodes
+      .filter(n => !n.isSessionStart && n.laneId === 'main')
+      .sort((a, b) => a.stepIndex - b.stepIndex);
+
+    const annotations = annotationData.annotations;
+
+    // Sort workflow nodes by timestamp
+    const sortedNodes = workflowNodes
+      .map(node => ({
+        node,
+        time: node.timestamp ? new Date(node.timestamp).getTime() : 0
+      }))
+      .filter(n => n.time > 0)
+      .sort((a, b) => a.time - b.time);
+
+    // Sort annotations by timestamp with their 1-indexed sequence
+    const sortedAnnotations = annotations
+      .map((record, index) => ({
+        record,
+        sequenceIndex: index + 1, // 1-indexed to match AnnotationView
+        time: record.timestamp ? new Date(record.timestamp).getTime() : 0
+      }))
+      .filter(a => a.time > 0)
+      .sort((a, b) => a.time - b.time);
+
+    // For each workflow node, find the closest annotation by timestamp
+    sortedNodes.forEach(({ node, time: nodeTime }) => {
+      let closestAnnotationSeq = -1;
+      let closestDiff = Infinity;
+
+      for (const { sequenceIndex, time: annotationTime } of sortedAnnotations) {
+        const diff = Math.abs(annotationTime - nodeTime);
+        if (diff < closestDiff) {
+          closestDiff = diff;
+          closestAnnotationSeq = sequenceIndex;
+        }
+        // Early exit if we've passed the node time and diff is increasing
+        if (annotationTime > nodeTime && diff > closestDiff) {
+          break;
+        }
+      }
+
+      if (closestAnnotationSeq >= 0) {
+        map.set(node.stepIndex, closestAnnotationSeq);
+      }
+    });
+
+    return map;
+  }, [isAnnotationView, annotationData?.annotations, workflowData?.workflow]);
 
   // Extract messages based on framework
   const { messages, agentColors, mainStepIndices } = useMemo(() => {
@@ -158,6 +221,16 @@ export function ChatLog() {
       // Helper to get display step label
       const getDisplayStepLabel = (node: typeof workflow.nodes[0]): string => {
         if (node.isSessionStart) return '';
+
+        // In annotation view, use annotation index for main agent messages
+        if (isAnnotationView && node.laneId === 'main') {
+          const annotationSeq = stepToAnnotationIndexMap.get(node.stepIndex);
+          if (annotationSeq !== undefined) {
+            return `#${annotationSeq}`;
+          }
+          // Fallback to workflow-based numbering if no mapping found
+        }
+
         if (node.laneId === 'main') {
           const mainStep = mainAgentStepMap.get(node.stepIndex);
           return mainStep !== undefined ? `#${mainStep}` : `#${node.stepIndex}`;
@@ -247,7 +320,7 @@ export function ChatLog() {
     allMessages.sort((a, b) => a.stepIndex - b.stepIndex);
 
     return { messages: allMessages, agentColors: colors, mainStepIndices: [] };
-  }, [isClaudeCode, workflowData, graphData, showSubAgentMessages]);
+  }, [isClaudeCode, workflowData, graphData, showSubAgentMessages, isAnnotationView, stepToAnnotationIndexMap]);
 
   // For Claude Code, compute effectiveStepIndex from currentStep (main agent step number)
   const effectiveStepIndex = useMemo(() => {
@@ -441,7 +514,7 @@ export function ChatLog() {
                   <div className="px-3 py-2">
                     <div
                       className={`
-                        text-sm text-slate-700
+                        text-sm text-slate-700 whitespace-pre-wrap break-words
                         ${isExpanded ? 'max-h-64 overflow-y-auto' : 'line-clamp-2 overflow-hidden'}
                       `}
                     >
