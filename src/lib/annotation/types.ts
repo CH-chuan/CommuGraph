@@ -9,13 +9,13 @@
 // Unit Types
 // ============================================================================
 
-export type UnitType = 'assistant_turn' | 'user_turn';
+export type UnitType = 'assistant_turn' | 'user_turn' | 'system_turn';
 
 // ============================================================================
 // Actor Types
 // ============================================================================
 
-export type ActorType = 'human' | 'agent';
+export type ActorType = 'human' | 'agent' | 'system';
 export type RoleType = 'delegator' | 'proxy' | 'mixed' | 'unknown';
 export type AgentKind = 'main' | 'sub' | 'unknown';
 
@@ -157,6 +157,11 @@ export interface AnnotationRecord {
   text_or_artifact_ref: TextOrArtifactRef;
   /** Labels (empty for preprocessing, filled during annotation) */
   labels: LabelRecord[];
+  /** Compact metadata (only for system_turn with context compaction) */
+  compact_metadata?: {
+    trigger: string;
+    preTokens: number;
+  };
 }
 
 // ============================================================================
@@ -177,6 +182,14 @@ export function makeAssistantEventId(requestId: string | undefined, messageId: s
  */
 export function makeUserTurnEventId(rawUuid: string): string {
   return `U:${rawUuid}`;
+}
+
+/**
+ * Generate event_id for system_turn unit.
+ * Pattern: S:{raw_uuid}
+ */
+export function makeSystemTurnEventId(rawUuid: string): string {
+  return `S:${rawUuid}`;
 }
 
 // ============================================================================
@@ -246,4 +259,12 @@ export interface RawLogRecord {
     level: string;
     disabled: boolean;
   };
+  // System record fields
+  content?: string;
+  compactMetadata?: {
+    trigger: string;
+    preTokens: number;
+  };
+  // Context compaction summary
+  isCompactSummary?: boolean;
 }

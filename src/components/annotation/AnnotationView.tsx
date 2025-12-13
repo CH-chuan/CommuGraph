@@ -79,8 +79,8 @@ function convertToReactFlow(
   let assistantRow: LayoutRow = { records: [], indices: [] };
 
   annotations.forEach((record, index) => {
-    if (record.unit_type === 'user_turn') {
-      // User turn always starts a new row (by itself)
+    if (record.unit_type === 'user_turn' || record.unit_type === 'system_turn') {
+      // User turn and system turn always start a new row (by themselves)
       // First, push any pending assistant row
       if (assistantRow.records.length > 0) {
         rows.push(assistantRow);
@@ -152,12 +152,12 @@ function convertToReactFlow(
     });
 
     // Vertical edge to next row
-    // - If current row is user_turn: connect to FIRST (leftmost) node in next row
+    // - If current row is user_turn or system_turn: connect to FIRST (leftmost) node in next row
     // - If current row is assistant_turn(s): connect LAST (rightmost) node to next row's first
     if (rowIndex < rows.length - 1) {
-      const isCurrentRowUser = row.records[0].unit_type === 'user_turn';
-      const sourceNode = isCurrentRowUser
-        ? row.records[0]  // User connects from itself
+      const isCurrentRowSingleNode = row.records[0].unit_type === 'user_turn' || row.records[0].unit_type === 'system_turn';
+      const sourceNode = isCurrentRowSingleNode
+        ? row.records[0]  // User/System connects from itself
         : row.records[row.records.length - 1];  // Assistant row: rightmost connects out
       const targetNode = rows[rowIndex + 1].records[0];  // Always connect to first/leftmost of next row
 
@@ -461,7 +461,9 @@ function InnerAnnotationView({
           position="bottom-left"
           nodeColor={(node) => {
             const data = node.data as unknown as AnnotationNodeData;
-            return data.record.unit_type === 'user_turn' ? '#3B82F6' : '#8B5CF6';
+            if (data.record.unit_type === 'user_turn') return '#3B82F6'; // Blue
+            if (data.record.unit_type === 'system_turn') return '#94A3B8'; // Slate/Grey
+            return '#8B5CF6'; // Purple (assistant)
           }}
           maskColor="rgba(0, 0, 0, 0.1)"
         />

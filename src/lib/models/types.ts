@@ -301,6 +301,14 @@ export interface WorkflowNode {
   // For fork/join tracking
   parentNodeIds: string[]; // Nodes that lead to this one
   childNodeIds: string[];  // Nodes that follow this one
+
+  // Context compaction fields
+  isContextCompact?: boolean;
+  compactSummary?: string;
+  compactMetadata?: {
+    trigger: string;
+    preTokens: number;
+  };
 }
 
 /** Duration classification for edge coloring */

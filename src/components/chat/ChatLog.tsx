@@ -15,7 +15,7 @@ import { useWorkflowData } from '@/hooks/use-workflow-data';
 import { useAnnotationData } from '@/hooks/use-annotation-data';
 import { getAgentColor } from '@/utils/graph-adapters';
 import { formatSubAgentName, extractAgentIdFromLaneId } from '@/utils/agent-naming';
-import { MessageSquare, ArrowRight, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
+import { MessageSquare, ArrowRight, ChevronDown, ChevronUp, Eye, EyeOff, Settings } from 'lucide-react';
 import type { WorkflowNodeType } from '@/lib/models/types';
 
 interface ChatMessage {
@@ -27,6 +27,13 @@ interface ChatMessage {
   timestamp?: string;
   nodeType?: WorkflowNodeType; // For Claude Code messages
   laneId?: string; // For Claude Code - 'main' or 'agent-{id}'
+  // Context compaction fields
+  isContextCompact?: boolean;
+  compactSummary?: string;
+  compactMetadata?: {
+    trigger: string;
+    preTokens: number;
+  };
 }
 
 // Color config matching WorkflowNode.tsx
@@ -277,6 +284,10 @@ export function ChatLog() {
           timestamp: node.timestamp,
           nodeType: node.nodeType, // For color matching with graph nodes
           laneId: node.laneId, // For determining if main agent or sub-agent
+          // Context compaction fields
+          isContextCompact: node.isContextCompact,
+          compactSummary: node.compactSummary,
+          compactMetadata: node.compactMetadata,
         };
       });
 
@@ -464,6 +475,76 @@ export function ChatLog() {
 
               // Check if this message should animate
               const isAnimating = msg.stepIndex === animatingStepIndex;
+
+              // Special rendering for context compact messages
+              if (msg.isContextCompact) {
+                return (
+                  <div
+                    key={messageId}
+                    ref={messageRef}
+                    className={`
+                      rounded-lg border-2 transition-all cursor-pointer select-none overflow-hidden bg-white
+                      border-slate-400
+                      ${isHighlighted ? 'ring-2 ring-amber-400 ring-offset-1' : ''}
+                      ${isAnimating ? 'animate-pulse-highlight' : ''}
+                      ${!isPast ? 'opacity-40' : ''}
+                      hover:shadow-md
+                      active:scale-[0.98]
+                    `}
+                    title="Context compaction - click to expand summary"
+                    onClick={() => setHighlightedStepIndex(msg.stepIndex)}
+                    onDoubleClick={() => {
+                      setHighlightedStepIndex(msg.stepIndex);
+                      if (msg.laneId === 'main' || !msg.laneId) {
+                        setFocusStepIndex(msg.stepIndex);
+                      }
+                    }}
+                  >
+                    {/* Header: Context Compacted with icon */}
+                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-100">
+                      <Settings className="w-4 h-4 text-slate-500" />
+                      <span className="text-sm font-semibold text-slate-700">
+                        Context Compacted
+                      </span>
+                      {msg.compactMetadata?.preTokens && (
+                        <span className="ml-auto text-xs text-slate-500">
+                          {msg.compactMetadata.preTokens.toLocaleString()} tokens
+                        </span>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedMessageIds((prev) => {
+                            const next = new Set(prev);
+                            if (isExpanded) {
+                              next.delete(messageId);
+                            } else {
+                              next.add(messageId);
+                            }
+                            return next;
+                          });
+                        }}
+                        className="p-1 hover:bg-slate-200 rounded transition-colors"
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-slate-500" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-slate-500" />
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Collapsible summary content */}
+                    {isExpanded && msg.compactSummary && (
+                      <div className="px-3 py-2 max-h-64 overflow-y-auto border-t border-slate-200">
+                        <pre className="text-xs text-slate-600 whitespace-pre-wrap font-mono">
+                          {msg.compactSummary}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
 
               return (
                 <div

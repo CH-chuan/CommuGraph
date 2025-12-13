@@ -153,6 +153,9 @@ interface RawLogRecord {
   messageId?: string;
   snapshot?: Record<string, unknown>;
   isSnapshotUpdate?: boolean;
+
+  // Context compaction summary
+  isCompactSummary?: boolean;
 }
 
 // Re-export WorkflowNodeType for convenience
@@ -185,6 +188,11 @@ export interface ClaudeCodeMessage extends Message {
 
   // Duration (for tool results)
   durationMs?: number;
+
+  // Context compaction fields
+  isContextCompact?: boolean;
+  compactSummary?: string;
+  compactMetadata?: CompactMetadata;
 }
 
 /** Merged LLM response (combining thinking + text + tool_use chunks) */
@@ -361,8 +369,33 @@ export class ClaudeCodeParser extends BaseParser {
       sessionId = records[0].sessionId;
     }
 
+    // Build compact boundary map (uuid -> system record with compact_boundary)
+    const compactBoundaryMap = new Map<string, RawLogRecord>();
+    for (const record of records) {
+      if (record.type === 'system' && record.subtype === 'compact_boundary') {
+        compactBoundaryMap.set(record.uuid, record);
+      }
+    }
+
+    // Build compact summary map (parentUuid -> user summary record)
+    // Also track UUIDs to skip in main processing
+    const compactSummaryMap = new Map<string, RawLogRecord>();
+    const compactSummaryUuids = new Set<string>();
+    for (const record of records) {
+      if (record.type === 'user' && record.isCompactSummary === true) {
+        if (record.parentUuid && compactBoundaryMap.has(record.parentUuid)) {
+          compactSummaryMap.set(record.parentUuid, record);
+          compactSummaryUuids.add(record.uuid);
+        }
+      }
+    }
+
     // First pass: categorize records and extract Task tool subagent_type
     for (const record of records) {
+      // Skip user records that are compact summaries (will be merged with system record)
+      if (record.type === 'user' && compactSummaryUuids.has(record.uuid)) {
+        continue;
+      }
       if (record.type === 'assistant' && record.requestId) {
         const existing = assistantRecordsByRequest.get(record.requestId) || [];
         existing.push(record);
@@ -431,7 +464,7 @@ export class ClaudeCodeParser extends BaseParser {
         stepIndex += newMessages.length;
       } else {
         const record = item.data;
-        const newMessages = this.convertRawRecord(record, stepIndex, subAgents, taskToolSubagentTypes);
+        const newMessages = this.convertRawRecord(record, stepIndex, subAgents, taskToolSubagentTypes, compactSummaryMap);
         messages.push(...newMessages);
         stepIndex += newMessages.length;
       }
@@ -616,7 +649,8 @@ export class ClaudeCodeParser extends BaseParser {
     record: RawLogRecord,
     startStepIndex: number,
     subAgents: Map<string, SubAgentInfo>,
-    taskToolSubagentTypes: Map<string, string>
+    taskToolSubagentTypes: Map<string, string>,
+    compactSummaryMap?: Map<string, RawLogRecord>
   ): ClaudeCodeMessage[] {
     const messages: ClaudeCodeMessage[] = [];
 
@@ -717,16 +751,35 @@ export class ClaudeCodeParser extends BaseParser {
         durationMs: record.toolUseResult?.totalDurationMs,
       });
     } else if (record.type === 'system') {
+      // Check if this is a compact_boundary with a summary to merge
+      const isCompactBoundary = record.subtype === 'compact_boundary';
+      let compactSummary: string | undefined;
+
+      if (isCompactBoundary && compactSummaryMap) {
+        const summaryRecord = compactSummaryMap.get(record.uuid);
+        if (summaryRecord) {
+          const userMsg = summaryRecord.message as UserMessage | undefined;
+          compactSummary = typeof userMsg?.content === 'string'
+            ? userMsg.content
+            : undefined;
+        }
+      }
+
       messages.push({
         step_index: startStepIndex,
         timestamp: record.timestamp,
-        sender: 'system',
+        // Updated sender for context compact
+        sender: isCompactBoundary ? 'system - context compact' : 'system',
         receiver: null,
         message_type: MessageType.SYSTEM,
-        content: record.content || record.subtype || 'System event',
+        // For compact boundary, prefer the summary content if available
+        content: isCompactBoundary
+          ? (compactSummary || record.content || 'Context compacted')
+          : (record.content || record.subtype || 'System event'),
         metadata: {
           subtype: record.subtype,
           compact_metadata: record.compactMetadata,
+          has_summary: !!compactSummary,
         },
 
         // Claude Code specific
@@ -736,6 +789,11 @@ export class ClaudeCodeParser extends BaseParser {
         workflowNodeType: WorkflowNodeType.SYSTEM_NOTICE,
         isSidechain: record.isSidechain,
         agentId: record.agentId,
+
+        // Context compaction fields
+        isContextCompact: isCompactBoundary,
+        compactSummary: compactSummary,
+        compactMetadata: record.compactMetadata,
       });
     }
 

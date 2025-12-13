@@ -30,6 +30,7 @@ import {
   type ToolCallSummary,
   makeAssistantEventId,
   makeUserTurnEventId,
+  makeSystemTurnEventId,
 } from './types';
 
 // ============================================================================
@@ -129,6 +130,8 @@ export class AnnotationPreprocessor {
   private isUserPrompt(record: RawLogRecord): boolean {
     if (record.type !== 'user') return false;
     if (record.isMeta) return false;
+    // Skip compact summary records (will be merged with system_turn)
+    if (record.isCompactSummary) return false;
 
     const userMsg = record.message as UserMessage | undefined;
     if (!userMsg) return false;
@@ -405,6 +408,56 @@ export class AnnotationPreprocessor {
       }
 
       output.push(record);
+    }
+
+    // 3. Generate system_turn records for context compaction
+    // Build index of compact summary records by parentUuid
+    const compactSummaryByParentUuid = new Map<string, { lineNumber: number; record: RawLogRecord }>();
+    for (const { lineNumber, record } of mainRecords) {
+      if (record.type === 'user' && record.isCompactSummary && record.parentUuid) {
+        compactSummaryByParentUuid.set(record.parentUuid, { lineNumber, record });
+      }
+    }
+
+    // Find compact_boundary system records and merge with summaries
+    for (const { lineNumber, record } of mainRecords) {
+      if (record.type !== 'system' || record.subtype !== 'compact_boundary') continue;
+
+      // Look up matching compact summary
+      const summaryEntry = compactSummaryByParentUuid.get(record.uuid);
+      let summaryContent = '';
+      const rawUuids = [record.uuid];
+      const lineNumbers = [lineNumber];
+
+      if (summaryEntry) {
+        const userMsg = summaryEntry.record.message as UserMessage | undefined;
+        if (userMsg && typeof userMsg.content === 'string') {
+          summaryContent = userMsg.content;
+        }
+        rawUuids.push(summaryEntry.record.uuid);
+        lineNumbers.push(summaryEntry.lineNumber);
+      }
+
+      output.push({
+        session_id: this.sessionId,
+        event_id: makeSystemTurnEventId(record.uuid),
+        actor_id: 'system',
+        actor_type: 'system',
+        unit_type: 'system_turn',
+        source: {
+          raw_file: this.rawFile,
+          raw_line_range: [Math.min(...lineNumbers), Math.max(...lineNumbers)],
+          raw_uuids: rawUuids,
+          is_sidechain: false,
+        },
+        timestamp: record.timestamp,
+        text_or_artifact_ref: {
+          text: summaryContent || record.content || 'Context compacted',
+        },
+        labels: [],
+        // Store compact metadata for UI display
+        compact_metadata: record.compactMetadata,
+      });
     }
 
     // Sort by timestamp
