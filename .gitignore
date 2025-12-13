@@ -15,8 +15,7 @@ figma_prototype/
 .env.production.local
 
 # samples
-public/samples
-
+public/samples/
 
 # claude code
 .claude
@@ -87,9 +86,6 @@ examples/logs/
 *.pickle
 *.pkl
 
-# Whitelist sample data for testing
-!public/mock_chat_history.jsonl
-
 
 # ================================
 #  IDE / Editor Files
@@ -137,3 +133,16 @@ visualizations/
 
 # Claude Code
 .specstory/
+
+# whitelist sample data for testing# ================================
+#  Allow selected sample jsonl files
+# ================================
+
+# Re-allow the samples directory structure
+!public/samples/
+!public/samples/autogen/
+!public/samples/claudecode/
+
+# Allow jsonl files only in these folders
+!public/samples/autogen/**/*.jsonl
+!public/samples/claudecode/**/*.jsonl
