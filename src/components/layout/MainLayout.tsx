@@ -15,6 +15,7 @@ import { TimelineControls } from '@/components/graph/TimelineControls';
 import { ChatLog } from '@/components/chat/ChatLog';
 import { WorkflowViewWrapper, WorkflowTimelineControls } from '@/components/workflow';
 import { AnnotationViewWrapper } from '@/components/annotation';
+import { AutoGenMetricsPanel } from '@/components/insights/AutoGenMetricsPanel';
 import { useAppContext } from '@/context/app-context';
 import { GitBranch, Tag } from 'lucide-react';
 
@@ -90,11 +91,10 @@ export function MainLayout() {
         {!isClaudeCode && <TimelineControls />}
       </div>
 
-      {/* Right Panel - Insights (only for non-Claude Code) */}
+      {/* Right Panel - Graph Metrics (only for non-Claude Code) */}
       {!isClaudeCode && (
-        <div className="w-1/4 border-l bg-slate-50 p-4 overflow-auto">
-          <h3 className="font-semibold text-lg mb-2">Insights</h3>
-          <p className="text-sm text-slate-600">Metrics and anomalies...</p>
+        <div className="w-1/4 border-l bg-slate-50 overflow-hidden">
+          <AutoGenMetricsPanel />
         </div>
       )}
     </div>
