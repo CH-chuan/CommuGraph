@@ -483,7 +483,7 @@ export function ChatLog() {
                     key={messageId}
                     ref={messageRef}
                     className={`
-                      rounded-lg border-2 transition-all cursor-pointer select-none overflow-hidden bg-white
+                      rounded-lg border-2 transition-all cursor-pointer overflow-hidden bg-white
                       border-slate-400
                       ${isHighlighted ? 'ring-2 ring-amber-400 ring-offset-1' : ''}
                       ${isAnimating ? 'animate-pulse-highlight' : ''}
@@ -551,7 +551,7 @@ export function ChatLog() {
                   key={messageId}
                   ref={messageRef}
                   className={`
-                    rounded-lg border-2 transition-all cursor-pointer select-none overflow-hidden bg-white
+                    rounded-lg border-2 transition-all cursor-pointer overflow-hidden bg-white
                     ${typeColors
                       ? typeColors.border
                       : (isCurrent ? 'border-blue-500 shadow-sm' : 'border-slate-200')
