@@ -66,7 +66,8 @@ function convertToReactFlow(
   snapshot: WorkflowGraphSnapshot,
   currentStep: number | null,
   highlightedStepIndex: number | null,
-  onSubAgentExpand: (agentId: string) => void
+  onSubAgentExpand: (agentId: string) => void,
+  onImageClick: (image: { mediaType: string; data: string }) => void
 ): { nodes: Node[]; edges: Edge[]; totalHeight: number } {
   const { nodes, edges, lanes } = snapshot;
 
@@ -197,6 +198,10 @@ function convertToReactFlow(
         parallelGroupId: node.parallelGroupId,
         parallelIndex: node.parallelIndex,
         parallelCount: node.parallelCount,
+
+        // Image content
+        images: node.images,
+        onImageClick,
       },
       style: {
         width: node.width,
@@ -287,16 +292,22 @@ function WorkflowViewInner() {
 export function WorkflowView({ data }: WorkflowViewProps) {
   const { currentStep, highlightedStepIndex, setCurrentStep, setHighlightedStepIndex, graphId } = useAppContext();
   const [selectedSubAgentId, setSelectedSubAgentId] = useState<string | null>(null);
+  const [modalImage, setModalImage] = useState<{ mediaType: string; data: string } | null>(null);
 
   // Handle sub-agent expand
   const handleSubAgentExpand = useCallback((agentId: string) => {
     setSelectedSubAgentId(agentId);
   }, []);
 
+  // Handle image click for full-size modal
+  const handleImageClick = useCallback((image: { mediaType: string; data: string }) => {
+    setModalImage(image);
+  }, []);
+
   // Convert data to React Flow format
   const { nodes, edges, totalHeight } = useMemo(
-    () => convertToReactFlow(data, currentStep, highlightedStepIndex, handleSubAgentExpand),
-    [data, currentStep, highlightedStepIndex, handleSubAgentExpand]
+    () => convertToReactFlow(data, currentStep, highlightedStepIndex, handleSubAgentExpand, handleImageClick),
+    [data, currentStep, highlightedStepIndex, handleSubAgentExpand, handleImageClick]
   );
 
   // Handle single click - scroll chat log to message (don't change graph step)
@@ -366,6 +377,29 @@ export function WorkflowView({ data }: WorkflowViewProps) {
         graphId={graphId}
         workflowData={data}
       />
+
+      {/* Image Modal */}
+      {modalImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setModalImage(null)}
+        >
+          <div className="relative max-w-[90vw] max-h-[90vh]">
+            <img
+              src={`data:${modalImage.mediaType};base64,${modalImage.data}`}
+              alt="Full size"
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setModalImage(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-gray-100 transition-colors"
+            >
+              <span className="text-gray-600 text-xl leading-none">&times;</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

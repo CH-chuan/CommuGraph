@@ -34,6 +34,11 @@ interface ChatMessage {
     trigger: string;
     preTokens: number;
   };
+  // Image content from user messages
+  images?: {
+    mediaType: string;
+    data: string;
+  }[];
 }
 
 // Color config matching WorkflowNode.tsx
@@ -114,6 +119,10 @@ export function ChatLog() {
     new Set()
   );
   const [animatingStepIndex, setAnimatingStepIndex] = useState<number | null>(null);
+  const [modalImage, setModalImage] = useState<{
+    mediaType: string;
+    data: string;
+  } | null>(null);
 
   // Build mapping from workflow stepIndex to annotation sequenceIndex for annotation view
   const stepToAnnotationIndexMap = useMemo(() => {
@@ -288,6 +297,8 @@ export function ChatLog() {
           isContextCompact: node.isContextCompact,
           compactSummary: node.compactSummary,
           compactMetadata: node.compactMetadata,
+          // Image content from user messages
+          images: node.images,
         };
       });
 
@@ -598,6 +609,25 @@ export function ChatLog() {
 
                   {/* Content with expand/collapse (white background) */}
                   <div className="px-3 py-2">
+                    {/* Image thumbnails - render before text */}
+                    {msg.images && msg.images.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {msg.images.map((img, imgIdx) => (
+                          <img
+                            key={imgIdx}
+                            src={`data:${img.mediaType};base64,${img.data}`}
+                            alt={`Image ${imgIdx + 1}`}
+                            className="max-h-24 max-w-32 rounded border border-slate-200 object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setModalImage(img);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Text content */}
                     <div
                       className={`
                         text-sm text-slate-700 whitespace-pre-wrap break-words
@@ -644,6 +674,29 @@ export function ChatLog() {
           </div>
         )}
       </div>
+
+      {/* Image Modal */}
+      {modalImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setModalImage(null)}
+        >
+          <div className="relative max-w-[90vw] max-h-[90vh]">
+            <img
+              src={`data:${modalImage.mediaType};base64,${modalImage.data}`}
+              alt="Full size"
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setModalImage(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-gray-100 transition-colors"
+            >
+              <span className="text-gray-600 text-xl leading-none">&times;</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

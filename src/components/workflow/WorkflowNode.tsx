@@ -87,6 +87,15 @@ export interface WorkflowNodeData {
     trigger: string;
     preTokens: number;
   };
+
+  // Image content from user messages
+  images?: {
+    mediaType: string;
+    data: string;
+  }[];
+
+  // Callback for opening full-size image
+  onImageClick?: (image: { mediaType: string; data: string }) => void;
 }
 
 // Tool icon mapping
@@ -506,6 +515,23 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
 
       {/* Content Preview */}
       <div className="px-3 py-2">
+        {/* Image thumbnails - render before text */}
+        {nodeData.images && nodeData.images.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {nodeData.images.map((img, imgIdx) => (
+              <img
+                key={imgIdx}
+                src={`data:${img.mediaType};base64,${img.data}`}
+                alt={`Image ${imgIdx + 1}`}
+                className="max-h-12 max-w-16 rounded border border-slate-200 object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  nodeData.onImageClick?.(img);
+                }}
+              />
+            ))}
+          </div>
+        )}
         <p className="text-xs text-slate-600 line-clamp-2">
           {nodeData.contentPreview}
         </p>

@@ -309,6 +309,12 @@ export interface WorkflowNode {
     trigger: string;
     preTokens: number;
   };
+
+  // Image content from user messages
+  images?: {
+    mediaType: string;
+    data: string;  // base64 data
+  }[];
 }
 
 /** Duration classification for edge coloring */

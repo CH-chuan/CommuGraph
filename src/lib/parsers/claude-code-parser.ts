@@ -49,8 +49,26 @@ interface ToolResultContent {
   is_error?: boolean;
 }
 
+/** Image content in user messages */
+interface ImageContent {
+  type: 'image';
+  source: {
+    type: 'base64' | 'url';
+    media_type: string;
+    data: string;
+  };
+}
+
+/** Text content in mixed user message arrays */
+interface UserTextContent {
+  type: 'text';
+  text: string;
+}
+
 type AssistantContent = ThinkingContent | TextContent | ToolUseContent;
-type UserMessageContent = string | ToolResultContent[];
+/** User message content can be string, tool results array, or mixed content array (images + text) */
+type MixedUserContent = (ImageContent | UserTextContent | ToolResultContent)[];
+type UserMessageContent = string | MixedUserContent;
 
 /** Token usage statistics */
 interface TokenUsage {
@@ -193,6 +211,12 @@ export interface ClaudeCodeMessage extends Message {
   isContextCompact?: boolean;
   compactSummary?: string;
   compactMetadata?: CompactMetadata;
+
+  // Image content from user messages
+  images?: {
+    mediaType: string;
+    data: string;  // base64 data
+  }[];
 }
 
 /** Merged LLM response (combining thinking + text + tool_use chunks) */
@@ -659,7 +683,7 @@ export class ClaudeCodeParser extends BaseParser {
       if (!userMsg) return messages;
 
       const nodeType = this.classifyUserMessage(record);
-      const content = this.extractUserContent(record);
+      const { text: content, images } = this.extractUserContent(record);
 
       // Extract tool_use_id from message content FIRST (needed for sub-agent matching)
       let toolUseIdFromResult: string | undefined;
@@ -749,6 +773,9 @@ export class ClaudeCodeParser extends BaseParser {
         agentId: record.agentId,
         toolUseId: toolUseIdFromResult, // Also add to ClaudeCodeMessage for direct access
         durationMs: record.toolUseResult?.totalDurationMs,
+
+        // Image content from user messages
+        images,
       });
     } else if (record.type === 'system') {
       // Check if this is a compact_boundary with a summary to merge
@@ -828,28 +855,47 @@ export class ClaudeCodeParser extends BaseParser {
   }
 
   /**
-   * Extract text content from user message.
+   * Extract text content and images from user message.
+   * Returns both text and any base64 images found in the message.
    */
-  private extractUserContent(record: RawLogRecord): string {
+  private extractUserContent(record: RawLogRecord): {
+    text: string;
+    images?: { mediaType: string; data: string }[];
+  } {
     const userMsg = record.message as UserMessage | undefined;
-    if (!userMsg) return '';
+    if (!userMsg) return { text: '' };
 
     if (typeof userMsg.content === 'string') {
-      return userMsg.content;
+      return { text: userMsg.content };
     }
 
-    // Array of tool results
+    // Array content (can be tool results, images, text, or mixed)
     if (Array.isArray(userMsg.content)) {
-      const parts: string[] = [];
+      const textParts: string[] = [];
+      const images: { mediaType: string; data: string }[] = [];
 
       for (const item of userMsg.content) {
-        if (item.type === 'tool_result') {
-          if (typeof item.content === 'string') {
-            parts.push(item.content);
-          } else if (Array.isArray(item.content)) {
-            for (const c of item.content) {
+        if (item.type === 'text') {
+          // Direct text content in mixed arrays
+          textParts.push((item as UserTextContent).text);
+        } else if (item.type === 'image') {
+          // Image content - extract base64 data
+          const imgItem = item as ImageContent;
+          if (imgItem.source?.type === 'base64' && imgItem.source.data) {
+            images.push({
+              mediaType: imgItem.source.media_type,
+              data: imgItem.source.data,
+            });
+          }
+        } else if (item.type === 'tool_result') {
+          // Tool result content
+          const toolResult = item as ToolResultContent;
+          if (typeof toolResult.content === 'string') {
+            textParts.push(toolResult.content);
+          } else if (Array.isArray(toolResult.content)) {
+            for (const c of toolResult.content) {
               if (c.type === 'text') {
-                parts.push(c.text);
+                textParts.push(c.text);
               }
             }
           }
@@ -858,19 +904,22 @@ export class ClaudeCodeParser extends BaseParser {
 
       // Also include toolUseResult content if available
       if (record.toolUseResult?.stdout) {
-        parts.push(record.toolUseResult.stdout);
+        textParts.push(record.toolUseResult.stdout);
       }
       if (record.toolUseResult?.stderr) {
-        parts.push(`[stderr] ${record.toolUseResult.stderr}`);
+        textParts.push(`[stderr] ${record.toolUseResult.stderr}`);
       }
       if (record.toolUseResult?.file?.content) {
-        parts.push(`[file: ${record.toolUseResult.file.filePath}]\n${record.toolUseResult.file.content}`);
+        textParts.push(`[file: ${record.toolUseResult.file.filePath}]\n${record.toolUseResult.file.content}`);
       }
 
-      return parts.join('\n').slice(0, 10000); // Limit content length
+      return {
+        text: textParts.join('\n').slice(0, 10000), // Limit content length
+        images: images.length > 0 ? images : undefined,
+      };
     }
 
-    return '';
+    return { text: '' };
   }
 
   /**

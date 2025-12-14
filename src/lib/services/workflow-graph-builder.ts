@@ -291,6 +291,9 @@ export class WorkflowGraphBuilder {
       isContextCompact: msg.isContextCompact,
       compactSummary: msg.compactSummary,
       compactMetadata: msg.compactMetadata,
+
+      // Image content from user messages
+      images: msg.images,
     };
   }
 
