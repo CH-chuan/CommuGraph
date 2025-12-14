@@ -1,6 +1,6 @@
 # CommuGraph
 
-CommuGraph is a analytics tool for **multi-agent chat logs**. It turns conversation traces (e.g. AutoGen, Claude Code) into an interactive, time-aware graph so you can review **agent-to-agent interactions**, **tool execution traces**, and **session-level metrics**.
+CommuGraph is an analytics tool for **multi-agent chat logs**. It turns conversation traces (e.g. AutoGen, Claude Code) into interactive visualizations so you can review **agent-to-agent interactions**, **tool execution traces**, and **session-level metrics**.
 
 At the current stage, CommuGraph focuses on **log ingestion + visualization + navigation** (not full process mining yet).
 
@@ -34,16 +34,16 @@ npm run build
 npm start
 ```
 
-## Supported inputs
+## Supported Inputs
 
 - **File types**: `.json` and `.jsonl`
 - **Frameworks**:
   - AutoGen (single file)
   - Claude Code (main session + optional sub-agent logs)
 
-### AutoGen schema (currently supported)
+### AutoGen Schema
 
-For AutoGen, CommuGraph currently supports a **JSON Lines** format where **each line is one message object**, shaped like the sample at `public/samples/autogen/mock_chat_history.jsonl`:
+For AutoGen, CommuGraph supports a **JSON Lines** format where **each line is one message object**, shaped like the sample at `public/samples/autogen/mock_chat_history.jsonl`:
 
 - **Required fields**:
   - `sender` (string): who sent the message (e.g. `"User"`, `"Manager"`, `"Coder"`)
@@ -53,21 +53,43 @@ For AutoGen, CommuGraph currently supports a **JSON Lines** format where **each 
 
 If your AutoGen export differs from this structure, it may not parse correctly yet.
 
-### Claude Code version note
+### Claude Code Logs
 
-Our Claude Code parsing is tested against **chat logs `2.0.64`**. If you hit parsing/visualization issues with other versions or log variants, please **open an issue** and include a minimal repro log (or a redacted snippet).
+Our Claude Code parsing is tested against **chat logs from version `2.0.64`**. Key features:
 
-## Current capabilities (high level)
+- **Topological ordering** via UUID parent-child chain (not timestamp sorting)
+- **Phantom branch pruning** - Handles Claude Code's logging bug where user messages with images are logged multiple times
+- **Sub-agent support** - Upload sub-agent logs alongside the main session
+- **Context compaction** - Tracks conversation continuity across context boundaries
+
+**Deduplication**: Claude Code sometimes logs the same user message multiple times (especially with images), creating duplicate branches. CommuGraph uses timestamp-based deduplication to remove these phantom branches automatically.
+
+If you hit parsing/visualization issues with other versions, please **open an issue** with a minimal repro log.
+
+## View Modes
+
+CommuGraph offers multiple ways to explore your chat logs:
+
+| View | Description |
+|------|-------------|
+| **Workflow View** | Swim-lane diagram showing agent interactions over time |
+| **Annotation View** | Linear conversation with collapsible assistant turns |
+| **Chat Log** | Traditional message list with syntax highlighting |
+| **Graph View** | Interactive node-link diagram (AutoGen) |
+
+## Current Capabilities
 
 - Upload and parse supported log formats
-- Explore a time-aware interaction graph
-- Review chat messages alongside the graph
+- Multiple visualization modes (workflow, annotation, chat log, graph)
 - Timeline-based navigation and playback
-- Claude Code workflow-style visualization + basic session metrics
+- Sub-agent exploration via modal views
+- Image display for user messages with screenshots
+- Session metrics dashboard
+- Cross-view highlighting and navigation
 
-## What’s next (roadmap)
+## What's Next (Roadmap)
 
-- **Process mining functions are pending**.
+- Process mining functions (pending)
 
 ## Tech Stack (for contributors)
 
@@ -92,6 +114,8 @@ Our Claude Code parsing is tested against **chat logs `2.0.64`**. If you hit par
 | `/api/graph/[id]` | GET | Get graph snapshot (optional `?step=N`) |
 | `/api/graph/[id]/metrics` | GET | Get graph metrics |
 | `/api/graph/[id]/info` | GET | Get session info |
+| `/api/graph/[id]/annotations` | GET | Get annotation records for annotation view |
+| `/api/graph/[id]/workflow` | GET | Get workflow data for workflow view |
 | `/api/session/[id]` | DELETE | Delete session |
 
 ## Architecture (high level)
