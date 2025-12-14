@@ -203,13 +203,13 @@ A merged response contains:
 allUuids: [response.uuid, ...response.toolCalls.map(tc => tc.uuid)]
 ```
 
-## Pre-Processing: Deduplication
+## Pre-Processing: Phantom Branch Pruning
 
-Before ordering, records are deduplicated to handle Claude Code logging bugs.
+Before ordering, phantom branches are pruned to handle Claude Code logging bugs.
 
 ### The Problem
 
-Claude Code sometimes logs the same content multiple times with different UUIDs, creating **phantom branches** in the conversation tree.
+Claude Code sometimes logs the same user message multiple times with different UUIDs when images are involved. These duplicate records create phantom branches in the conversation tree.
 
 #### Type 1: Assistant Records (Signature Duplicates)
 
@@ -222,79 +222,116 @@ Line 196: uuid=ecde71ae, parentUuid=d6adb465, signature=EfYD..., timestamp=15:23
                                               SAME signature!
 ```
 
-#### Type 2: User Records (Partial Content Duplicates)
+#### Type 2: User Records (Timestamp Duplicates)
 
-The same user message logged multiple times at the same timestamp, but with **different content richness**. One record contains the full content, the other contains partial content:
+The same user message logged as multiple separate records. These duplicates:
+- Share the **same timestamp** (key identifier)
+- May have **different parentUuids** (creating parallel chains, not just forks)
+- Have **different content richness** (complete vs partial logging)
 
+**Example - Same timestamp, different content:**
 ```
-Line 737: uuid=461dbbb6, parentUuid=e15b4dfc, content=[image,image,text], timestamp=20:26:17
-Line 983: uuid=2dace94c, parentUuid=e15b4dfc, content=[image], timestamp=20:26:17
-          ^^^^^^^^^^^^   ^^^^^^^^^^^^^^^^^^^^^            ^^^^^^^^
-          DIFFERENT uuid  SAME parentUuid+timestamp        PARTIAL content!
+Timestamp: 2025-12-09T20:35:22.822Z
 
-Line 737 has 3 content blocks (full)
-Line 983 has 1 content block (partial) ← Creates phantom branch
+Line 768: 3 blocks [image+image+text], parentUuid=45da10a4  ← MAIN (richest)
+Line 1015: 1 block [image], parentUuid=f78fbdf2  ← PHANTOM
+Line 1016: 1 block [image], parentUuid=4d9bf34d  ← PHANTOM
+Line 1017: 1 block [text], parentUuid=810d2f56   ← PHANTOM
 ```
+
+The partial records form chains (image → image → text) that parallel the complete record.
 
 ### Impact
 
-These duplicates create **fork points** where one UUID becomes the parent of two different conversation branches. Both branches appear valid but one is a ghost branch from partial logging.
+These parallel chains create divergent conversation trees. Both branches appear valid but the phantom branches contain duplicated/partial data that shouldn't be displayed.
 
-In sample files:
-- `5c22b36d`: 1 fork point → 67 records in phantom branch
-- `f812be97`: 1 fork point → 50 records in phantom branch
+### Solution: Timestamp-Based Deduplication
 
-### Solution
+We use **timestamp grouping** to identify duplicates, then prune **entire phantom branches**:
 
-**Phase 1: Assistant Record Deduplication**
-
-For records with thinking content, deduplicate where ALL match:
-- `signature` (first 60 chars)
-- `message.id`
-- `requestId`
-- `timestamp`
-
-Keep the **first occurrence** (lower line number).
-
-**Phase 2: User Record Deduplication**
-
-For user records with array content, group by:
-- `parentUuid`
-- `timestamp`
-
-Keep the record with **most content blocks** (richest content). If tied, keep first occurrence.
+1. **Deduplicate assistants by signature** - Same as before
+2. **Group user records by timestamp** - Same timestamp = same user action
+3. **Keep richest record** - Most content blocks wins at each timestamp
+4. **Collect phantom UUIDs** - BFS from phantom branch roots
+5. **Exclude phantom records** - Filter out all records in phantom branches
 
 ```typescript
-// Phase 1: Assistant deduplication key
-const assistantKey = [
-  'assistant',
-  signature.slice(0, 60),
-  msg.id || '',
-  record.requestId || '',
-  record.timestamp || '',
-].join('|');
+// Phase 3: Group user records (with array content) by timestamp
+const timestampGroups = new Map<string, RawLogRecord[]>();
+for (const record of afterAssistantDedup) {
+  if (record.type !== 'user') continue;
+  if (!Array.isArray(record.message?.content)) continue;
 
-// Phase 2: User deduplication - group by key, keep richest
-const userGroupKey = `${record.parentUuid}|${record.timestamp}`;
-// Group all user records with array content by this key
-// Keep the one with highest content.length
+  const ts = record.timestamp;
+  timestampGroups.get(ts)?.push(record) || timestampGroups.set(ts, [record]);
+}
+
+// Phase 4: Identify phantom roots (partial records at same timestamp)
+for (const [timestamp, recs] of timestampGroups.entries()) {
+  if (recs.length <= 1) continue;
+
+  // Sort by content count descending
+  recs.sort((a, b) => getContentCount(b) - getContentCount(a));
+
+  // First record is main (richest), rest are phantom roots
+  phantomRoots.push(...recs.slice(1));
+}
+
+// Phase 5: Collect all UUIDs in phantom branches (BFS)
+for (const root of phantomRoots) {
+  // BFS to collect all UUIDs in phantom branch
+  phantomUuids.add(root.uuid);
+  // ... add all descendants
+}
+
+// Phase 6: Filter out phantom branch
+return records.filter(r => !phantomUuids.has(r.uuid));
 ```
 
-### Results After Deduplication
+### Why Timestamp-Based (not Fork-Based)?
 
-| File | Records Before | Records After | Removed | Fork Points |
-|------|----------------|---------------|---------|-------------|
-| 5c22b36d | 1413 | 1346 | 67 | 1 → **0** |
-| f812be97 | 428 | 378 | 50 | 1 → **0** |
+The original fork-based approach only detected cases where duplicates shared the same `parentUuid`. However, Claude Code's logging bug often creates duplicates with **different** `parentUuids` but the **same** `timestamp`.
+
+| Approach | Detects Same Parent | Detects Different Parent |
+|----------|---------------------|--------------------------|
+| Fork-based | ✅ | ❌ |
+| Timestamp-based | ✅ | ✅ |
+
+### Results After Timestamp-Based Pruning
+
+| File | Before | After | Records Removed | Duplicate Groups |
+|------|--------|-------|-----------------|------------------|
+| 5c22b36d | 1413 | 656 | 757 | 69 → **0** |
+| f812be97 | 428 | 135 | 293 | 44 → **0** |
+
+### Note: Signature Dedup vs Branch Pruning
+
+The algorithm has two deduplication phases:
+1. **Phase 1: Signature dedup** - Removes assistant records with identical thinking signatures
+2. **Phase 3-6: Branch pruning** - Removes phantom branches based on timestamp grouping
+
+Analysis shows that duplicate thinking records are **children of phantom image branches**:
+
+| File | Duplicate Signature Groups | After Branch Pruning Alone |
+|------|---------------------------|---------------------------|
+| 5c22b36d | 77 | 0 remaining |
+| f812be97 | 49 | 0 remaining |
+
+This means signature dedup (Phase 1) is technically redundant - branch pruning handles everything.
+
+**Why we keep both:**
+1. **Defense in depth** - Handles edge cases where duplicates might not be in phantom branches
+2. **Performance** - Fewer records to process in later phases
+3. **Safety** - If timestamp grouping misses something, signature dedup catches it
 
 ### Implementation Locations
 
 | Component | File | Method |
 |-----------|------|--------|
-| Workflow/ChatLog | `src/lib/parsers/claude-code-parser.ts` | `deduplicateRecords()` |
-| Annotation View | `src/lib/annotation/preprocessor.ts` | `deduplicateRecords()` |
+| Workflow/ChatLog | `src/lib/parsers/claude-code-parser.ts` | `prunePhantomBranches()` |
+| Annotation View | `src/lib/annotation/preprocessor.ts` | `prunePhantomBranches()` |
 
-Deduplication runs **before** topological sorting.
+Branch pruning runs **before** topological sorting.
 
 ---
 

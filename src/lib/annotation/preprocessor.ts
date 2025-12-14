@@ -112,32 +112,25 @@ export class AnnotationPreprocessor {
       }
     }
 
-    // Deduplicate records (handles Claude Code logging bug)
-    this.records = this.deduplicateRecords(this.records);
+    // Prune phantom branches (handles Claude Code logging bug)
+    this.records = this.prunePhantomBranches(this.records);
   }
 
   /**
-   * Deduplicate records based on content signatures and content richness.
+   * Prune phantom branches caused by Claude Code logging bug.
    *
-   * Claude Code has a logging bug where the same content can be logged multiple
-   * times with different UUIDs, creating phantom branches in the conversation tree.
+   * Claude Code sometimes logs the same user message multiple times with different
+   * UUIDs when images are involved. These duplicates share the same timestamp but
+   * may have different parentUuids and content richness.
    *
-   * Two types of duplicates:
-   *
-   * 1. Assistant records with thinking content - duplicates share:
-   *    - signature (in thinking content)
-   *    - message.id (Claude API message ID)
-   *    - requestId (API request ID)
-   *    - timestamp
-   *    Keep: First occurrence (lower line number)
-   *
-   * 2. User records with array content (images, text, mixed) - duplicates share:
-   *    - parentUuid
-   *    - timestamp
-   *    But one has MORE content blocks than the other (partial logging bug).
-   *    Keep: Record with MOST content blocks (richest content)
+   * Strategy (timestamp-based):
+   * 1. Deduplicate assistant records by signature
+   * 2. Group user records (with array content) by timestamp
+   * 3. For each timestamp group with multiple records, keep only the richest one
+   * 4. Collect all UUIDs in phantom branches (descendants of partial records)
+   * 5. Exclude all records in phantom branches
    */
-  private deduplicateRecords(records: ParsedLine[]): ParsedLine[] {
+  private prunePhantomBranches(records: ParsedLine[]): ParsedLine[] {
     // Phase 1: Deduplicate assistant records by signature
     const assistantSeen = new Set<string>();
     const afterAssistantDedup: ParsedLine[] = [];
@@ -147,107 +140,99 @@ export class AnnotationPreprocessor {
 
       if (record.type === 'assistant') {
         const msg = record.message as AssistantMessage | undefined;
-        if (!msg?.content || !Array.isArray(msg.content)) {
-          afterAssistantDedup.push(parsed);
-          continue;
-        }
+        if (msg?.content && Array.isArray(msg.content)) {
+          // Find signature in thinking content
+          let signature: string | undefined;
+          for (const c of msg.content) {
+            if (c.type === 'thinking' && (c as ThinkingContent).signature) {
+              signature = (c as ThinkingContent).signature;
+              break;
+            }
+          }
 
-        // Find signature in thinking content
-        let signature: string | undefined;
-        for (const c of msg.content) {
-          if (c.type === 'thinking' && (c as ThinkingContent).signature) {
-            signature = (c as ThinkingContent).signature;
-            break;
+          if (signature) {
+            const key = [
+              'assistant',
+              signature.slice(0, 60),
+              msg.id || '',
+              record.requestId || '',
+              record.timestamp || '',
+            ].join('|');
+
+            if (assistantSeen.has(key)) {
+              continue; // Duplicate - skip
+            }
+            assistantSeen.add(key);
           }
         }
-
-        // If no signature, can't deduplicate - keep the record
-        if (!signature) {
-          afterAssistantDedup.push(parsed);
-          continue;
-        }
-
-        // Build composite deduplication key for assistant
-        const key = [
-          'assistant',
-          signature.slice(0, 60), // First 60 chars of signature
-          msg.id || '',
-          record.requestId || '',
-          record.timestamp || '',
-        ].join('|');
-
-        if (assistantSeen.has(key)) {
-          continue; // Duplicate - skip
-        }
-
-        assistantSeen.add(key);
-        afterAssistantDedup.push(parsed);
-      } else {
-        afterAssistantDedup.push(parsed);
       }
+      afterAssistantDedup.push(parsed);
     }
 
-    // Phase 2: Deduplicate user records by parentUuid+timestamp, keeping richest
-    // Group user records with array content by parentUuid+timestamp
-    const userGroups = new Map<string, { parsed: ParsedLine; contentCount: number; index: number }[]>();
-    const result: ParsedLine[] = [];
-    const userRecordsToProcess = new Set<number>(); // indices of user records with array content
+    // Phase 2: Build parent -> children map for BFS traversal later
+    const childrenMap = new Map<string | null, ParsedLine[]>();
+    for (const parsed of afterAssistantDedup) {
+      const parent = parsed.record.parentUuid ?? null;
+      if (!childrenMap.has(parent)) childrenMap.set(parent, []);
+      childrenMap.get(parent)!.push(parsed);
+    }
 
-    for (let i = 0; i < afterAssistantDedup.length; i++) {
-      const parsed = afterAssistantDedup[i];
+    // Phase 3: Group user records (with array content) by timestamp
+    const timestampGroups = new Map<string, ParsedLine[]>();
+    for (const parsed of afterAssistantDedup) {
       const record = parsed.record;
+      if (record.type !== 'user') continue;
+      const msg = record.message as UserMessage | undefined;
+      if (!msg?.content || !Array.isArray(msg.content)) continue;
 
-      if (record.type === 'user') {
-        const userMsg = record.message as UserMessage | undefined;
-        if (userMsg?.content && Array.isArray(userMsg.content) && record.parentUuid && record.timestamp) {
-          const key = `${record.parentUuid}|${record.timestamp}`;
-          const contentCount = userMsg.content.length;
+      const ts = record.timestamp;
+      if (!timestampGroups.has(ts)) timestampGroups.set(ts, []);
+      timestampGroups.get(ts)!.push(parsed);
+    }
 
-          if (!userGroups.has(key)) {
-            userGroups.set(key, []);
-          }
-          userGroups.get(key)!.push({ parsed, contentCount, index: i });
-          userRecordsToProcess.add(i);
-        }
+    // Phase 4: Identify phantom roots (partial records at same timestamp)
+    const phantomBranchRoots: ParsedLine[] = [];
+
+    for (const [, recs] of timestampGroups.entries()) {
+      if (recs.length <= 1) continue;
+
+      // Sort by content count descending, then by line number for tie-breaking
+      const getContentCount = (p: ParsedLine): number => {
+        const r = p.record;
+        const msg = r.message as UserMessage;
+        return Array.isArray(msg.content) ? msg.content.length : 0;
+      };
+
+      const sortedRecs = [...recs].sort((a, b) => {
+        const countDiff = getContentCount(b) - getContentCount(a);
+        if (countDiff !== 0) return countDiff;
+        return a.lineNumber - b.lineNumber;
+      });
+
+      // First record is main (richest), rest are phantom roots
+      for (let i = 1; i < sortedRecs.length; i++) {
+        phantomBranchRoots.push(sortedRecs[i]);
       }
     }
 
-    // Determine which user records to keep (the richest in each group)
-    const userRecordsToKeep = new Set<number>();
-    for (const [, group] of userGroups) {
-      if (group.length === 1) {
-        // Only one record in group - keep it
-        userRecordsToKeep.add(group[0].index);
-      } else {
-        // Multiple records - keep the one with most content blocks
-        // If tied, keep the first one (lower index = earlier in file)
-        group.sort((a, b) => {
-          if (b.contentCount !== a.contentCount) {
-            return b.contentCount - a.contentCount; // Higher count first
-          }
-          return a.index - b.index; // Earlier index first
-        });
-        userRecordsToKeep.add(group[0].index);
+    // Phase 5: Collect all UUIDs in phantom branches (BFS from phantom roots)
+    const phantomUuids = new Set<string>();
+
+    for (const root of phantomBranchRoots) {
+      const queue = [root];
+      while (queue.length > 0) {
+        const parsed = queue.shift()!;
+        if (phantomUuids.has(parsed.record.uuid)) continue;
+        phantomUuids.add(parsed.record.uuid);
+
+        // Add children of this record to queue
+        const children = childrenMap.get(parsed.record.uuid) || [];
+        queue.push(...children);
       }
     }
 
-    // Build final result
-    for (let i = 0; i < afterAssistantDedup.length; i++) {
-      const parsed = afterAssistantDedup[i];
-
-      if (userRecordsToProcess.has(i)) {
-        // This is a user record with array content - check if it should be kept
-        if (userRecordsToKeep.has(i)) {
-          result.push(parsed);
-        }
-        // Otherwise skip (it's a partial duplicate)
-      } else {
-        // Not a user record with array content - keep it
-        result.push(parsed);
-      }
-    }
-
-    return result;
+    // Phase 6: Filter out phantom branch records
+    return afterAssistantDedup.filter(p => !phantomUuids.has(p.record.uuid));
   }
 
   /**
