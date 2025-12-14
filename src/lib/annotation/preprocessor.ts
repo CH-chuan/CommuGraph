@@ -111,6 +111,143 @@ export class AnnotationPreprocessor {
         console.warn(`Skipping invalid JSON on line ${i + 1}`);
       }
     }
+
+    // Deduplicate records (handles Claude Code logging bug)
+    this.records = this.deduplicateRecords(this.records);
+  }
+
+  /**
+   * Deduplicate records based on content signatures and content richness.
+   *
+   * Claude Code has a logging bug where the same content can be logged multiple
+   * times with different UUIDs, creating phantom branches in the conversation tree.
+   *
+   * Two types of duplicates:
+   *
+   * 1. Assistant records with thinking content - duplicates share:
+   *    - signature (in thinking content)
+   *    - message.id (Claude API message ID)
+   *    - requestId (API request ID)
+   *    - timestamp
+   *    Keep: First occurrence (lower line number)
+   *
+   * 2. User records with array content (images, text, mixed) - duplicates share:
+   *    - parentUuid
+   *    - timestamp
+   *    But one has MORE content blocks than the other (partial logging bug).
+   *    Keep: Record with MOST content blocks (richest content)
+   */
+  private deduplicateRecords(records: ParsedLine[]): ParsedLine[] {
+    // Phase 1: Deduplicate assistant records by signature
+    const assistantSeen = new Set<string>();
+    const afterAssistantDedup: ParsedLine[] = [];
+
+    for (const parsed of records) {
+      const record = parsed.record;
+
+      if (record.type === 'assistant') {
+        const msg = record.message as AssistantMessage | undefined;
+        if (!msg?.content || !Array.isArray(msg.content)) {
+          afterAssistantDedup.push(parsed);
+          continue;
+        }
+
+        // Find signature in thinking content
+        let signature: string | undefined;
+        for (const c of msg.content) {
+          if (c.type === 'thinking' && (c as ThinkingContent).signature) {
+            signature = (c as ThinkingContent).signature;
+            break;
+          }
+        }
+
+        // If no signature, can't deduplicate - keep the record
+        if (!signature) {
+          afterAssistantDedup.push(parsed);
+          continue;
+        }
+
+        // Build composite deduplication key for assistant
+        const key = [
+          'assistant',
+          signature.slice(0, 60), // First 60 chars of signature
+          msg.id || '',
+          record.requestId || '',
+          record.timestamp || '',
+        ].join('|');
+
+        if (assistantSeen.has(key)) {
+          continue; // Duplicate - skip
+        }
+
+        assistantSeen.add(key);
+        afterAssistantDedup.push(parsed);
+      } else {
+        afterAssistantDedup.push(parsed);
+      }
+    }
+
+    // Phase 2: Deduplicate user records by parentUuid+timestamp, keeping richest
+    // Group user records with array content by parentUuid+timestamp
+    const userGroups = new Map<string, { parsed: ParsedLine; contentCount: number; index: number }[]>();
+    const result: ParsedLine[] = [];
+    const userRecordsToProcess = new Set<number>(); // indices of user records with array content
+
+    for (let i = 0; i < afterAssistantDedup.length; i++) {
+      const parsed = afterAssistantDedup[i];
+      const record = parsed.record;
+
+      if (record.type === 'user') {
+        const userMsg = record.message as UserMessage | undefined;
+        if (userMsg?.content && Array.isArray(userMsg.content) && record.parentUuid && record.timestamp) {
+          const key = `${record.parentUuid}|${record.timestamp}`;
+          const contentCount = userMsg.content.length;
+
+          if (!userGroups.has(key)) {
+            userGroups.set(key, []);
+          }
+          userGroups.get(key)!.push({ parsed, contentCount, index: i });
+          userRecordsToProcess.add(i);
+        }
+      }
+    }
+
+    // Determine which user records to keep (the richest in each group)
+    const userRecordsToKeep = new Set<number>();
+    for (const [, group] of userGroups) {
+      if (group.length === 1) {
+        // Only one record in group - keep it
+        userRecordsToKeep.add(group[0].index);
+      } else {
+        // Multiple records - keep the one with most content blocks
+        // If tied, keep the first one (lower index = earlier in file)
+        group.sort((a, b) => {
+          if (b.contentCount !== a.contentCount) {
+            return b.contentCount - a.contentCount; // Higher count first
+          }
+          return a.index - b.index; // Earlier index first
+        });
+        userRecordsToKeep.add(group[0].index);
+      }
+    }
+
+    // Build final result
+    for (let i = 0; i < afterAssistantDedup.length; i++) {
+      const parsed = afterAssistantDedup[i];
+
+      if (userRecordsToProcess.has(i)) {
+        // This is a user record with array content - check if it should be kept
+        if (userRecordsToKeep.has(i)) {
+          result.push(parsed);
+        }
+        // Otherwise skip (it's a partial duplicate)
+      } else {
+        // Not a user record with array content - keep it
+        result.push(parsed);
+      }
+    }
+
+    return result;
   }
 
   /**

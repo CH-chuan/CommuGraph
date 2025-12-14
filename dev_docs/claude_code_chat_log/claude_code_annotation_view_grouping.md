@@ -239,11 +239,15 @@ Sub-agent activity is visible through:
 
 ---
 
-## Record Ordering
+## Record Pre-Processing
 
-Annotation units are ordered using **topological sort** via the parent-child UUID chain, not timestamps.
+Before grouping and ordering, records are pre-processed:
+
+1. **Deduplication** - Remove duplicate records caused by Claude Code logging bug
+2. **Topological Sort** - Order by parent-child UUID chain, not timestamps
 
 See **[record_ordering.md](./record_ordering.md)** for the full algorithm covering:
+- Deduplication via signature matching
 - Why timestamp sorting is insufficient
 - The topological sort algorithm
 - Handling siblings, orphans, and context compaction

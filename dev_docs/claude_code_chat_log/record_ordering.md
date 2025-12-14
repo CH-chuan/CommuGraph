@@ -203,7 +203,102 @@ A merged response contains:
 allUuids: [response.uuid, ...response.toolCalls.map(tc => tc.uuid)]
 ```
 
-## Implementation Locations
+## Pre-Processing: Deduplication
+
+Before ordering, records are deduplicated to handle Claude Code logging bugs.
+
+### The Problem
+
+Claude Code sometimes logs the same content multiple times with different UUIDs, creating **phantom branches** in the conversation tree.
+
+#### Type 1: Assistant Records (Signature Duplicates)
+
+Multiple records with the same thinking content and signature:
+
+```
+Line 10:  uuid=68ad3e2f, parentUuid=2da22b59, signature=EfYD..., timestamp=15:23:35
+Line 196: uuid=ecde71ae, parentUuid=d6adb465, signature=EfYD..., timestamp=15:23:35
+                                              ^^^^^^^^^^^^
+                                              SAME signature!
+```
+
+#### Type 2: User Records (Partial Content Duplicates)
+
+The same user message logged multiple times at the same timestamp, but with **different content richness**. One record contains the full content, the other contains partial content:
+
+```
+Line 737: uuid=461dbbb6, parentUuid=e15b4dfc, content=[image,image,text], timestamp=20:26:17
+Line 983: uuid=2dace94c, parentUuid=e15b4dfc, content=[image], timestamp=20:26:17
+          ^^^^^^^^^^^^   ^^^^^^^^^^^^^^^^^^^^^            ^^^^^^^^
+          DIFFERENT uuid  SAME parentUuid+timestamp        PARTIAL content!
+
+Line 737 has 3 content blocks (full)
+Line 983 has 1 content block (partial) ← Creates phantom branch
+```
+
+### Impact
+
+These duplicates create **fork points** where one UUID becomes the parent of two different conversation branches. Both branches appear valid but one is a ghost branch from partial logging.
+
+In sample files:
+- `5c22b36d`: 1 fork point → 67 records in phantom branch
+- `f812be97`: 1 fork point → 50 records in phantom branch
+
+### Solution
+
+**Phase 1: Assistant Record Deduplication**
+
+For records with thinking content, deduplicate where ALL match:
+- `signature` (first 60 chars)
+- `message.id`
+- `requestId`
+- `timestamp`
+
+Keep the **first occurrence** (lower line number).
+
+**Phase 2: User Record Deduplication**
+
+For user records with array content, group by:
+- `parentUuid`
+- `timestamp`
+
+Keep the record with **most content blocks** (richest content). If tied, keep first occurrence.
+
+```typescript
+// Phase 1: Assistant deduplication key
+const assistantKey = [
+  'assistant',
+  signature.slice(0, 60),
+  msg.id || '',
+  record.requestId || '',
+  record.timestamp || '',
+].join('|');
+
+// Phase 2: User deduplication - group by key, keep richest
+const userGroupKey = `${record.parentUuid}|${record.timestamp}`;
+// Group all user records with array content by this key
+// Keep the one with highest content.length
+```
+
+### Results After Deduplication
+
+| File | Records Before | Records After | Removed | Fork Points |
+|------|----------------|---------------|---------|-------------|
+| 5c22b36d | 1413 | 1346 | 67 | 1 → **0** |
+| f812be97 | 428 | 378 | 50 | 1 → **0** |
+
+### Implementation Locations
+
+| Component | File | Method |
+|-----------|------|--------|
+| Workflow/ChatLog | `src/lib/parsers/claude-code-parser.ts` | `deduplicateRecords()` |
+| Annotation View | `src/lib/annotation/preprocessor.ts` | `deduplicateRecords()` |
+
+Deduplication runs **before** topological sorting.
+
+---
+
+## Topological Sort Implementation Locations
 
 | Component | File | Method |
 |-----------|------|--------|
