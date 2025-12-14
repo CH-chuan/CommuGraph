@@ -238,7 +238,7 @@ const snapshot = graphBuilder.toGraphSnapshot(step);
 
 **Current State**: Next.js 15 Migration Complete!
 
-**Last Updated**: 2025-12-10
+**Last Updated**: 2025-12-14
 
 **Server Running**: http://localhost:3000 (Next.js dev server)
 
@@ -253,6 +253,18 @@ const snapshot = graphBuilder.toGraphSnapshot(step);
 - Edge focus mode
 - Play/pause animation (1 step/second)
 - All API endpoints tested and working
+
+### Claude Code Parsing: Phantom Branch Handling
+
+Claude Code has a logging bug where user messages (especially with images) create phantom branches - multiple records at the same timestamp with the same parent but different UUIDs. The parser handles this with:
+
+1. **User record pruning** (`prunePhantomBranches`): Groups user records by timestamp, keeps the "richest" record (most content blocks), prunes others and their descendants via BFS.
+
+2. **Assistant record deduplication** (`mergeAssistantRecords`): When merging chunked assistant records by `requestId`, deduplicates by `messageId` (Claude API message ID) to prevent duplicate thinking/text/tool_use content from phantom branches.
+
+Key implementation in `src/lib/parsers/claude-code-parser.ts`:
+- `processedMessageIds` Set tracks which messageIds have been processed
+- `seenToolUseIds` Set provides additional safety for tool_use deduplication
 
 ## Important Notes for Development
 

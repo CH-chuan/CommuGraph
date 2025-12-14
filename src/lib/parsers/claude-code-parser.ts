@@ -730,10 +730,21 @@ export class ClaudeCodeParser extends BaseParser {
         outputTokens: 0,
       };
 
+      // DEDUPLICATE: Track processed messageIds to avoid duplicate content
+      // Phantom branches have same messageId but different UUIDs
+      const processedMessageIds = new Set<string>();
+      const seenToolUseIds = new Set<string>();
+
       // Aggregate content from all chunks
       for (const record of records) {
         const msg = record.message as AssistantMessage | undefined;
         if (!msg?.content) continue;
+
+        // Skip if we've already processed a record with this messageId
+        if (processedMessageIds.has(msg.id)) {
+          continue;
+        }
+        processedMessageIds.add(msg.id);
 
         for (const content of msg.content) {
           if (content.type === 'thinking') {
@@ -741,12 +752,16 @@ export class ClaudeCodeParser extends BaseParser {
           } else if (content.type === 'text') {
             response.text = (response.text || '') + content.text;
           } else if (content.type === 'tool_use') {
-            response.toolCalls.push({
-              id: content.id,
-              name: content.name,
-              input: content.input,
-              uuid: record.uuid,
-            });
+            // Additional safety: deduplicate by tool_use_id
+            if (!seenToolUseIds.has(content.id)) {
+              seenToolUseIds.add(content.id);
+              response.toolCalls.push({
+                id: content.id,
+                name: content.name,
+                input: content.input,
+                uuid: record.uuid,
+              });
+            }
           }
         }
 
