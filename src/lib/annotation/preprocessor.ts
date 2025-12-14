@@ -310,8 +310,8 @@ export class AnnotationPreprocessor {
       if (content.includes('<local-command-')) return false;
       if (content.includes('<bash-notification>')) return false;
 
-      // Skip empty or very short content
-      if (content.trim().length < 5) return false;
+      // Skip empty content (but allow short messages like "yes", "ok")
+      if (content.trim().length === 0) return false;
 
       return true;
     }
@@ -333,8 +333,8 @@ export class AnnotationPreprocessor {
       const hasImages = userMsg.content.some(item => item.type === 'image');
       if (hasImages) return true; // Images are always meaningful
 
-      // Check text length
-      if (textContent.trim().length < 5) return false;
+      // Check text length (allow short messages, but require non-empty)
+      if (textContent.trim().length === 0) return false;
 
       return true;
     }
@@ -783,6 +783,37 @@ export class AnnotationPreprocessor {
         labels: [],
         // Store compact metadata for UI display
         compact_metadata: record.compactMetadata,
+      });
+    }
+
+    // 4. Generate system_turn records for other system messages (api_error, etc.)
+    for (const { lineNumber, record } of mainRecords) {
+      if (record.type !== 'system') continue;
+      // Skip compact_boundary (already handled above)
+      if (record.subtype === 'compact_boundary') continue;
+      // Skip records without subtype (shouldn't happen but be safe)
+      if (!record.subtype) continue;
+
+      output.push({
+        session_id: this.sessionId,
+        event_id: makeSystemTurnEventId(record.uuid),
+        actor_id: 'system',
+        actor_type: 'system',
+        unit_type: 'system_turn',
+        source: {
+          raw_file: this.rawFile,
+          raw_line_range: [lineNumber, lineNumber],
+          raw_uuids: [record.uuid],
+          is_sidechain: false,
+          parent_uuid: record.parentUuid,
+        },
+        timestamp: record.timestamp,
+        text_or_artifact_ref: {
+          text: record.content || record.subtype || 'System event',
+        },
+        labels: [],
+        // Store subtype for UI display
+        system_subtype: record.subtype,
       });
     }
 

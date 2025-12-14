@@ -133,13 +133,31 @@ function UserTurnNode({ data, selected }: { data: AnnotationNodeData; selected?:
 }
 
 /**
- * System Turn Node Component (for context compaction)
+ * Format system subtype for display (e.g., "api_error" -> "API Error")
+ */
+function formatSystemSubtype(subtype?: string): string {
+  if (!subtype) return 'System Notice';
+  // Convert snake_case to Title Case
+  return subtype
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/**
+ * System Turn Node Component (for context compaction and other system messages)
  */
 function SystemTurnNode({ data, selected }: { data: AnnotationNodeData; selected?: boolean }) {
-  const { record, isHighlighted } = data;
-  const text = record.text_or_artifact_ref?.text || 'Context compacted';
+  const { record, sequenceIndex, isHighlighted } = data;
+  const text = record.text_or_artifact_ref?.text || 'System event';
   const compactMetadata = record.compact_metadata;
+  const isCompactBoundary = compactMetadata !== undefined;
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Determine display label based on whether this is compact_boundary or another system message
+  const displayLabel = isCompactBoundary
+    ? 'Context Compact'
+    : formatSystemSubtype(record.system_subtype);
 
   return (
     <div
@@ -165,26 +183,39 @@ function SystemTurnNode({ data, selected }: { data: AnnotationNodeData; selected
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-t-md">
         <Settings className="w-4 h-4 text-slate-600" />
-        <span className="text-sm font-semibold text-slate-700">Context Compact</span>
+        <span className="text-sm font-semibold text-slate-700">{displayLabel}</span>
         {compactMetadata?.preTokens && (
-          <span className="ml-auto text-xs text-slate-500">
+          <span className="text-xs text-slate-500">
             {compactMetadata.preTokens.toLocaleString()} tokens
           </span>
         )}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsExpanded(!isExpanded);
-          }}
-          className="p-1 hover:bg-slate-200 rounded transition-colors"
-        >
-          {isExpanded ? (
-            <ChevronDown className="w-4 h-4 text-slate-500" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-slate-500" />
-          )}
-        </button>
+        <span className="ml-auto text-xs text-slate-500">#{sequenceIndex}</span>
+        {/* Only show expand button if there's content to show */}
+        {(isCompactBoundary || text.length > 50) && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsExpanded(!isExpanded);
+            }}
+            className="p-1 hover:bg-slate-200 rounded transition-colors"
+          >
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4 text-slate-500" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-slate-500" />
+            )}
+          </button>
+        )}
       </div>
+
+      {/* Content preview for non-compact system messages */}
+      {!isCompactBoundary && !isExpanded && text.length <= 50 && (
+        <div className="px-3 py-2">
+          <p className="text-sm text-slate-600">
+            {text}
+          </p>
+        </div>
+      )}
 
       {/* Collapsible Content */}
       {isExpanded && (
