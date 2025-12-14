@@ -28,6 +28,8 @@ import {
   type SourcePointers,
   type ToolSummary,
   type ToolCallSummary,
+  type ImageContent,
+  type UserTextContent,
   makeAssistantEventId,
   makeUserTurnEventId,
   makeSystemTurnEventId,
@@ -126,6 +128,7 @@ export class AnnotationPreprocessor {
 
   /**
    * Check if a user record is a direct user prompt (not tool result or meta).
+   * Now supports mixed content arrays with images + text.
    */
   private isUserPrompt(record: RawLogRecord): boolean {
     if (record.type !== 'user') return false;
@@ -136,20 +139,84 @@ export class AnnotationPreprocessor {
     const userMsg = record.message as UserMessage | undefined;
     if (!userMsg) return false;
 
-    // Must be string content (not array of tool_results)
-    if (typeof userMsg.content !== 'string') return false;
+    // String content - original logic
+    if (typeof userMsg.content === 'string') {
+      const content = userMsg.content;
 
-    const content = userMsg.content;
+      // Skip command messages
+      if (content.includes('<command-name>')) return false;
+      if (content.includes('<local-command-')) return false;
+      if (content.includes('<bash-notification>')) return false;
 
-    // Skip command messages
-    if (content.includes('<command-name>')) return false;
-    if (content.includes('<local-command-')) return false;
-    if (content.includes('<bash-notification>')) return false;
+      // Skip empty or very short content
+      if (content.trim().length < 5) return false;
 
-    // Skip empty or very short content
-    if (content.trim().length < 5) return false;
+      return true;
+    }
 
-    return true;
+    // Array content - check if it contains text or image (not just tool_results)
+    if (Array.isArray(userMsg.content)) {
+      const hasUserContent = userMsg.content.some(
+        item => item.type === 'text' || item.type === 'image'
+      );
+      // Skip if only tool results
+      if (!hasUserContent) return false;
+
+      // Extract text to check for command messages
+      const textContent = this.extractTextFromMixedContent(userMsg.content);
+      if (textContent.includes('<command-name>')) return false;
+      if (textContent.includes('<local-command-')) return false;
+      if (textContent.includes('<bash-notification>')) return false;
+
+      // Check if there's meaningful content (text or images)
+      const hasImages = userMsg.content.some(item => item.type === 'image');
+      if (hasImages) return true; // Images are always meaningful
+
+      // Check text length
+      if (textContent.trim().length < 5) return false;
+
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Extract text content from mixed content array.
+   */
+  private extractTextFromMixedContent(content: UserMessage['content']): string {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return '';
+
+    const textParts: string[] = [];
+    for (const item of content) {
+      if (item.type === 'text') {
+        textParts.push((item as UserTextContent).text);
+      }
+    }
+    return textParts.join('\n');
+  }
+
+  /**
+   * Extract images from mixed content array.
+   */
+  private extractImagesFromMixedContent(content: UserMessage['content']): { mediaType: string; data: string }[] | undefined {
+    if (typeof content === 'string') return undefined;
+    if (!Array.isArray(content)) return undefined;
+
+    const images: { mediaType: string; data: string }[] = [];
+    for (const item of content) {
+      if (item.type === 'image') {
+        const imgItem = item as ImageContent;
+        if (imgItem.source?.type === 'base64' && imgItem.source.data) {
+          images.push({
+            mediaType: imgItem.source.media_type,
+            data: imgItem.source.data,
+          });
+        }
+      }
+    }
+    return images.length > 0 ? images : undefined;
   }
 
   /**
@@ -321,7 +388,8 @@ export class AnnotationPreprocessor {
       if (!this.isUserPrompt(record)) continue;
 
       const userMsg = record.message as UserMessage;
-      const content = typeof userMsg.content === 'string' ? userMsg.content : '';
+      const textContent = this.extractTextFromMixedContent(userMsg.content);
+      const images = this.extractImagesFromMixedContent(userMsg.content);
 
       output.push({
         session_id: this.sessionId,
@@ -337,7 +405,8 @@ export class AnnotationPreprocessor {
         },
         timestamp: record.timestamp,
         text_or_artifact_ref: {
-          text: content,
+          text: textContent,
+          images,
         },
         labels: [],
       });

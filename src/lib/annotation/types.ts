@@ -128,6 +128,11 @@ export interface TextOrArtifactRef {
   tool_call_id?: string;
   /** Path to artifact (e.g., file written) */
   artifact_path?: string;
+  /** Image content from user messages (base64) */
+  images?: {
+    mediaType: string;
+    data: string;
+  }[];
 }
 
 // ============================================================================
@@ -236,9 +241,28 @@ export interface AssistantMessage {
   };
 }
 
+/** Image content in user messages */
+export interface ImageContent {
+  type: 'image';
+  source: {
+    type: 'base64' | 'url';
+    media_type: string;
+    data: string;
+  };
+}
+
+/** Text content in mixed user message arrays */
+export interface UserTextContent {
+  type: 'text';
+  text: string;
+}
+
+/** Mixed user content can be images, text, or tool results */
+export type MixedUserContent = (ImageContent | UserTextContent | ToolResultContent)[];
+
 export interface UserMessage {
   role: 'user';
-  content: string | ToolResultContent[];
+  content: string | MixedUserContent;
 }
 
 export interface RawLogRecord {

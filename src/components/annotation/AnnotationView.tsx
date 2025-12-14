@@ -69,7 +69,8 @@ interface LayoutRow {
  */
 function convertToReactFlow(
   annotations: AnnotationRecord[],
-  highlightedIndex: number | null
+  highlightedIndex: number | null,
+  onImageClick: (image: { mediaType: string; data: string }) => void
 ): { nodes: Node[]; edges: Edge[]; totalHeight: number } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -118,6 +119,7 @@ function convertToReactFlow(
         record,
         sequenceIndex: globalIndex + 1,
         isHighlighted: highlightedIndex === globalIndex,
+        onImageClick,
       };
 
       nodes.push({
@@ -484,11 +486,17 @@ export function AnnotationView({
   onFocusHandled,
 }: AnnotationViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [modalImage, setModalImage] = useState<{ mediaType: string; data: string } | null>(null);
+
+  // Handle image click for full-size modal
+  const handleImageClick = useCallback((image: { mediaType: string; data: string }) => {
+    setModalImage(image);
+  }, []);
 
   // Convert data to React Flow format
   const { nodes, edges, totalHeight } = useMemo(
-    () => convertToReactFlow(annotations, highlightedIndex),
-    [annotations, highlightedIndex]
+    () => convertToReactFlow(annotations, highlightedIndex, handleImageClick),
+    [annotations, highlightedIndex, handleImageClick]
   );
 
   if (annotations.length === 0) {
@@ -519,6 +527,29 @@ export function AnnotationView({
           containerRef={containerRef}
         />
       </ReactFlowProvider>
+
+      {/* Image Modal */}
+      {modalImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setModalImage(null)}
+        >
+          <div className="relative max-w-[90vw] max-h-[90vh]">
+            <img
+              src={`data:${modalImage.mediaType};base64,${modalImage.data}`}
+              alt="Full size"
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setModalImage(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-gray-100 transition-colors"
+            >
+              <span className="text-gray-600 text-xl leading-none">&times;</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -29,6 +29,8 @@ export interface AnnotationNodeData {
   record: AnnotationRecord;
   sequenceIndex: number;
   isHighlighted?: boolean;
+  // Callback for opening full-size image
+  onImageClick?: (image: { mediaType: string; data: string }) => void;
 }
 
 /**
@@ -60,8 +62,9 @@ function truncateText(text: string, maxLength: number): string {
  * User Turn Node Component
  */
 function UserTurnNode({ data, selected }: { data: AnnotationNodeData; selected?: boolean }) {
-  const { record, sequenceIndex, isHighlighted } = data;
+  const { record, sequenceIndex, isHighlighted, onImageClick } = data;
   const text = record.text_or_artifact_ref?.text || '';
+  const images = record.text_or_artifact_ref?.images;
 
   return (
     <div
@@ -93,6 +96,23 @@ function UserTurnNode({ data, selected }: { data: AnnotationNodeData; selected?:
 
       {/* Content */}
       <div className="px-3 py-2">
+        {/* Image thumbnails - render before text */}
+        {images && images.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {images.map((img, imgIdx) => (
+              <img
+                key={imgIdx}
+                src={`data:${img.mediaType};base64,${img.data}`}
+                alt={`Image ${imgIdx + 1}`}
+                className="max-h-12 max-w-16 rounded border border-slate-200 object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onImageClick?.(img);
+                }}
+              />
+            ))}
+          </div>
+        )}
         <p className="text-sm text-slate-700 whitespace-pre-wrap line-clamp-4">
           {truncateText(text, 300)}
         </p>
