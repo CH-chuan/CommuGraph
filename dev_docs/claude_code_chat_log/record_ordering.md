@@ -245,36 +245,69 @@ The partial records form chains (image → image → text) that parallel the com
 
 These parallel chains create divergent conversation trees. Both branches appear valid but the phantom branches contain duplicated/partial data that shouldn't be displayed.
 
-### Solution: Timestamp-Based Deduplication
+### Solution: Timestamp + Content Deduplication
 
-We use **timestamp grouping** to identify duplicates, then prune **entire phantom branches**:
+We use **timestamp grouping** combined with **content comparison** to identify duplicates:
 
 1. **Deduplicate assistants by signature** - Same as before
-2. **Group user records by timestamp** - Same timestamp = same user action
-3. **Keep richest record** - Most content blocks wins at each timestamp
-4. **Collect phantom UUIDs** - BFS from phantom branch roots
-5. **Exclude phantom records** - Filter out all records in phantom branches
+2. **Group USER INPUT records by timestamp** - Same timestamp = potentially same user action
+3. **Identify the "main" record** - Richest record (most content blocks) is the main
+4. **Detect phantom patterns** - Compare each record against the main record
+5. **Collect phantom UUIDs** - BFS from phantom branch roots
+6. **Exclude phantom records** - Filter out all records in phantom branches
+
+**Simplified Rule**:
+> The richest record (most content blocks) is the **main** record. ALL others are **phantoms** UNLESS they have **different non-empty text** (which indicates a legitimate parallel branch).
+
+**Key distinctions**:
+- **User INPUT records** (actual user prompts with text/images) - these CAN have phantom duplicates
+- **Tool RESULT records** (tool execution results) - these should NEVER be deduplicated
+- **Different non-empty text** - Records with different text content are legitimate parallel branches, NOT phantoms
+
+This simple rule handles all phantom cases:
+- Same text content (string vs array format) → phantom
+- Image-only subsets of image+text main → phantom (empty text = not a legitimate parallel)
+- Text-only subsets of image+text main → phantom if same text
+- Different text content → legitimate parallel branch
 
 ```typescript
-// Phase 3: Group user records (with array content) by timestamp
+// Phase 3: Group USER INPUT records by timestamp for phantom branch detection
 const timestampGroups = new Map<string, RawLogRecord[]>();
 for (const record of afterAssistantDedup) {
   if (record.type !== 'user') continue;
-  if (!Array.isArray(record.message?.content)) continue;
+  if (!record.message?.content) continue;
+
+  // Skip records that contain tool_result - these are tool execution results
+  if (Array.isArray(record.message.content)) {
+    const hasToolResult = record.message.content.some(c => c.type === 'tool_result');
+    if (hasToolResult) continue;
+  }
 
   const ts = record.timestamp;
   timestampGroups.get(ts)?.push(record) || timestampGroups.set(ts, [record]);
 }
 
-// Phase 4: Identify phantom roots (partial records at same timestamp)
-for (const [timestamp, recs] of timestampGroups.entries()) {
+// Phase 4: Identify phantom roots using the simplified rule
+for (const [, recs] of timestampGroups.entries()) {
   if (recs.length <= 1) continue;
 
-  // Sort by content count descending
-  recs.sort((a, b) => getContentCount(b) - getContentCount(a));
+  // Sort by content count (richest first) - the richest is the main record
+  const sortedRecs = [...recs].sort((a, b) => getContentCount(b) - getContentCount(a));
+  const mainRecord = sortedRecs[0];
+  const mainText = extractTextContent(mainRecord).trim().toLowerCase();
 
-  // First record is main (richest), rest are phantom roots
-  phantomRoots.push(...recs.slice(1));
+  // All other records are phantoms UNLESS they have different non-empty text
+  for (let i = 1; i < sortedRecs.length; i++) {
+    const rec = sortedRecs[i];
+    const recText = extractTextContent(rec).trim().toLowerCase();
+
+    // Different non-empty text = legitimate parallel branch, not phantom
+    const isLegitimateParallel = recText.length > 0 && recText !== mainText;
+
+    if (!isLegitimateParallel) {
+      phantomRoots.push(rec);
+    }
+  }
 }
 
 // Phase 5: Collect all UUIDs in phantom branches (BFS)

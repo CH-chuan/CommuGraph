@@ -34,6 +34,7 @@ export interface AnnotationsResponse {
   total: number;
   user_turn_count: number;
   assistant_turn_count: number;
+  system_turn_count: number;
 }
 
 export interface MetricsResponse {

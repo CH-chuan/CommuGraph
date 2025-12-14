@@ -17,8 +17,6 @@ import {
   type WorkflowEdge,
   type WorkflowLane,
   type WorkflowGraphSnapshot,
-  type WorkflowNodeType as WorkflowNodeTypeValue,
-  type SubAgentInfo as SubAgentInfoType,
 } from '@/lib/models/types';
 import type {
   ClaudeCodeMessage,
@@ -487,7 +485,7 @@ export class WorkflowGraphBuilder {
       .filter(n => n.laneId === 'main' && !n.isSessionStart)
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-    for (const [_parallelGroupId, results] of parallelGroupResults) {
+    for (const results of parallelGroupResults.values()) {
       if (results.length <= 1) continue; // Not a parallel group
 
       // Find the latest result timestamp in this group
@@ -537,7 +535,7 @@ export class WorkflowGraphBuilder {
   /**
    * Connect session start node to the first main lane node.
    */
-  private connectSessionStartNode(nodeByUuid: Map<string, WorkflowNode>): void {
+  private connectSessionStartNode(_nodeByUuid: Map<string, WorkflowNode>): void {
     const sessionStartNode = this.nodes.get('session-start');
     if (!sessionStartNode) return;
 

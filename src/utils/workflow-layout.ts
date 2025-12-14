@@ -222,7 +222,7 @@ function identifyParallelGroups(
 export function computeTreeLayout(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
-  _lanes: WorkflowLane[]
+  _lanes?: WorkflowLane[]
 ): TreeLayout {
   const config = TREE_LAYOUT_CONFIG;
 

@@ -136,7 +136,7 @@ function UserTurnNode({ data, selected }: { data: AnnotationNodeData; selected?:
  * System Turn Node Component (for context compaction)
  */
 function SystemTurnNode({ data, selected }: { data: AnnotationNodeData; selected?: boolean }) {
-  const { record, sequenceIndex, isHighlighted } = data;
+  const { record, isHighlighted } = data;
   const text = record.text_or_artifact_ref?.text || 'Context compacted';
   const compactMetadata = record.compact_metadata;
   const [isExpanded, setIsExpanded] = useState(false);

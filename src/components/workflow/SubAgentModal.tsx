@@ -25,20 +25,18 @@ import { Bot, Clock, Sparkles, Wrench, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { workflowNodeTypes } from './WorkflowNode';
 import { workflowEdgeTypes } from './WorkflowEdge';
 import type { WorkflowGraphSnapshot, WorkflowNode as WFNode } from '@/lib/models/types';
-import { TREE_LAYOUT_CONFIG, getNodeColor, getNodeHeight } from '@/utils/workflow-layout';
+import { TREE_LAYOUT_CONFIG, getNodeHeight } from '@/utils/workflow-layout';
 
 interface SubAgentModalProps {
   open: boolean;
   onClose: () => void;
   agentId: string | null;
-  graphId: string | null;
   workflowData: WorkflowGraphSnapshot;
 }
 
@@ -190,7 +188,6 @@ export function SubAgentModal({
   open,
   onClose,
   agentId,
-  graphId,
   workflowData,
 }: SubAgentModalProps) {
   const [modalImage, setModalImage] = useState<{ mediaType: string; data: string } | null>(null);
@@ -201,7 +198,7 @@ export function SubAgentModal({
   }, []);
 
   // Convert sub-agent data to React Flow format
-  const { nodes, edges, totalHeight, agentInfo } = useMemo(() => {
+  const { nodes, edges, agentInfo } = useMemo(() => {
     if (!agentId) {
       return { nodes: [], edges: [], totalHeight: 0, agentInfo: undefined };
     }

@@ -123,7 +123,7 @@ export function AnnotationViewWrapper() {
     });
 
     return { annotationToStepMap: aToS, stepToAnnotationMap: sToA };
-  }, [data?.annotations, workflowData?.workflow]);
+  }, [data, workflowData]);
 
   // Convert highlighted step index to annotation index
   const highlightedAnnotationIndex = useMemo(() => {
@@ -230,6 +230,11 @@ export function AnnotationViewWrapper() {
           <div className="bg-white rounded-lg p-3 shadow-sm">
             <div className="text-2xl font-bold text-purple-600">{data.assistant_turn_count}</div>
             <div className="text-sm text-slate-500">Assistant Turns</div>
+          </div>
+
+          <div className="bg-white rounded-lg p-3 shadow-sm">
+            <div className="text-2xl font-bold text-slate-600">{data.system_turn_count}</div>
+            <div className="text-sm text-slate-500">System Turns</div>
           </div>
         </div>
 

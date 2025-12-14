@@ -86,13 +86,11 @@ export function ChatLog() {
     framework,
     viewMode,
     currentStep,
-    setCurrentStep,
     highlightedStepIndex,
     setHighlightedStepIndex,
     setFocusStepIndex,
     showSubAgentMessages,
     setShowSubAgentMessages,
-    mainAgentStepCount,
   } = useAppContext();
 
   const isClaudeCode = framework === 'claudecode';
@@ -180,7 +178,7 @@ export function ChatLog() {
     });
 
     return map;
-  }, [isAnnotationView, annotationData?.annotations, workflowData?.workflow]);
+  }, [isAnnotationView, annotationData, workflowData]);
 
   // Extract messages based on framework
   const { messages, agentColors, mainStepIndices } = useMemo(() => {

@@ -118,17 +118,13 @@ export const convertEdgesToReactFlow = (
     const sourceColor = nodeColors[edge.source];
 
     // Style Configuration and zIndex for rendering order
-    let strokeColor = '#94a3b8'; // Slate 400 (History)
     let zIndex = 1;
 
     if (isFocused) {
-      strokeColor = '#10b981'; // Emerald (Focused)
       zIndex = 1000; // Render focused edges on top of everything
     } else if (edgeState === 'current') {
-      strokeColor = '#c2410c'; // Orange 700
       zIndex = 100; // Render current edges above regular edges
     } else if (edgeState === 'recent') {
-      strokeColor = sourceColor || '#64748b';
       zIndex = 50; // Render recent edges above history
     }
 

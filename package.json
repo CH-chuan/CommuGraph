@@ -20,7 +20,7 @@
     "clsx": "^2.1.1",
     "dagre": "^0.8.5",
     "lucide-react": "^0.559.0",
-    "next": "16.0.8",
+    "next": "^16.0.10",
     "react": "19.2.1",
     "react-dom": "19.2.1",
     "react-resizable-panels": "^3.0.6",
@@ -34,7 +34,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.0.8",
+    "eslint-config-next": "16.0.10",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
