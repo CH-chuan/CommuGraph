@@ -169,6 +169,8 @@ export interface AnnotationRecord {
     trigger: string;
     preTokens: number;
   };
+  /** System message subtype (for system_turn: api_error, etc.) */
+  system_subtype?: string;
 }
 
 // ============================================================================
