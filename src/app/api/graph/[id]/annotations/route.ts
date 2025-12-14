@@ -14,6 +14,7 @@ interface AnnotationsResponse {
   total: number;
   user_turn_count: number;
   assistant_turn_count: number;
+  system_turn_count: number;
 }
 
 export async function GET(
@@ -57,12 +58,14 @@ export async function GET(
     // Calculate counts
     const userTurnCount = annotations.filter(a => a.unit_type === 'user_turn').length;
     const assistantTurnCount = annotations.filter(a => a.unit_type === 'assistant_turn').length;
+    const systemTurnCount = annotations.filter(a => a.unit_type === 'system_turn').length;
 
     return NextResponse.json({
       annotations,
       total: annotations.length,
       user_turn_count: userTurnCount,
       assistant_turn_count: assistantTurnCount,
+      system_turn_count: systemTurnCount,
     });
   } catch (e) {
     console.error('Annotations retrieval error:', e);

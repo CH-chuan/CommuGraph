@@ -20,7 +20,6 @@ import {
   Controls,
   MiniMap,
   useReactFlow,
-  ReactFlowProvider,
   type Node,
   type Edge,
   Position,
@@ -28,15 +27,14 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { useAppContext } from '@/context/app-context';
-import { WorkflowNode, workflowNodeTypes } from './WorkflowNode';
-import { WorkflowEdge, workflowEdgeTypes } from './WorkflowEdge';
+import { workflowNodeTypes } from './WorkflowNode';
+import { workflowEdgeTypes } from './WorkflowEdge';
 import { SessionStartNode } from './SessionStartNode';
 import { SubAgentModal } from './SubAgentModal';
 import type { WorkflowGraphSnapshot, WorkflowNode as WFNode } from '@/lib/models/types';
 import {
   computeTreeLayout,
   getNodeColor,
-  TREE_LAYOUT_CONFIG,
 } from '@/utils/workflow-layout';
 import { extractAgentIdFromLaneId } from '@/utils/agent-naming';
 
@@ -290,7 +288,7 @@ function WorkflowViewInner() {
  * WorkflowView Component - Wrapped with ReactFlowProvider
  */
 export function WorkflowView({ data }: WorkflowViewProps) {
-  const { currentStep, highlightedStepIndex, setCurrentStep, setHighlightedStepIndex, graphId } = useAppContext();
+  const { currentStep, highlightedStepIndex, setCurrentStep, setHighlightedStepIndex } = useAppContext();
   const [selectedSubAgentId, setSelectedSubAgentId] = useState<string | null>(null);
   const [modalImage, setModalImage] = useState<{ mediaType: string; data: string } | null>(null);
 
@@ -305,7 +303,7 @@ export function WorkflowView({ data }: WorkflowViewProps) {
   }, []);
 
   // Convert data to React Flow format
-  const { nodes, edges, totalHeight } = useMemo(
+  const { nodes, edges } = useMemo(
     () => convertToReactFlow(data, currentStep, highlightedStepIndex, handleSubAgentExpand, handleImageClick),
     [data, currentStep, highlightedStepIndex, handleSubAgentExpand, handleImageClick]
   );
@@ -374,7 +372,6 @@ export function WorkflowView({ data }: WorkflowViewProps) {
         open={selectedSubAgentId !== null}
         onClose={() => setSelectedSubAgentId(null)}
         agentId={selectedSubAgentId}
-        graphId={graphId}
         workflowData={data}
       />
 

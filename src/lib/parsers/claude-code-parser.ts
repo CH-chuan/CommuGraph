@@ -434,40 +434,80 @@ export class ClaudeCodeParser extends BaseParser {
       childrenMap.get(parent)!.push(record);
     }
 
-    // Phase 3: Group user records (with array content) by timestamp
+    // Phase 3: Group USER INPUT records by timestamp for phantom branch detection
+    // The phantom branch bug causes Claude Code to log the same user message multiple
+    // times with different UUIDs. This affects:
+    // - Image messages: split into multiple records (image, image, text separately)
+    // - Text messages: logged twice with different formats (string vs array with text)
+    //
+    // We should SKIP tool_result records - multiple tool results at the same timestamp
+    // are legitimate (parallel tool calls returning together).
+    //
+    // We should INCLUDE all other user records (string content, or array with images/text).
     const timestampGroups = new Map<string, RawLogRecord[]>();
     for (const record of afterAssistantDedup) {
       if (record.type !== 'user') continue;
       const msg = record.message as UserMessage | undefined;
-      if (!msg?.content || !Array.isArray(msg.content)) continue;
+      if (!msg?.content) continue;
+
+      // Skip records that contain tool_result - these are tool execution results, not user input
+      if (Array.isArray(msg.content)) {
+        const hasToolResult = msg.content.some(
+          (c): c is ToolResultContent => c.type === 'tool_result'
+        );
+        if (hasToolResult) continue;
+      }
 
       const ts = record.timestamp;
       if (!timestampGroups.has(ts)) timestampGroups.set(ts, []);
       timestampGroups.get(ts)!.push(record);
     }
 
-    // Phase 4: Identify phantom roots (partial records at same timestamp)
+    // Phase 4: Identify phantom roots (subset duplicates at same timestamp)
+    // Rule: The richest record (most content blocks) is the main.
+    //       ALL others are phantoms UNLESS they have different non-empty text
+    //       (which indicates a legitimate parallel branch, not a duplicate).
     const phantomBranchRoots: RawLogRecord[] = [];
+
+    // Helper to extract text content for comparison
+    const extractTextContent = (r: RawLogRecord): string => {
+      const msg = r.message as UserMessage;
+      if (typeof msg.content === 'string') return msg.content;
+      if (Array.isArray(msg.content)) {
+        return msg.content
+          .filter((c): c is TextContent => c.type === 'text')
+          .map(c => c.text)
+          .join('\n');
+      }
+      return '';
+    };
+
+    // Helper to count content blocks (for richness comparison)
+    const getContentCount = (r: RawLogRecord): number => {
+      const msg = r.message as UserMessage;
+      if (typeof msg.content === 'string') return 1;
+      return Array.isArray(msg.content) ? msg.content.length : 0;
+    };
 
     for (const [, recs] of timestampGroups.entries()) {
       if (recs.length <= 1) continue;
 
-      // Sort by content count descending, then by timestamp for tie-breaking
-      const getContentCount = (r: RawLogRecord): number => {
-        const msg = r.message as UserMessage;
-        return Array.isArray(msg.content) ? msg.content.length : 0;
-      };
+      // Sort by content count (richest first) - the richest is the main record
+      const sortedRecs = [...recs].sort((a, b) => getContentCount(b) - getContentCount(a));
+      const mainRecord = sortedRecs[0];
+      const mainText = extractTextContent(mainRecord).trim().toLowerCase();
 
-      const sortedRecs = [...recs].sort((a, b) => {
-        const countDiff = getContentCount(b) - getContentCount(a);
-        if (countDiff !== 0) return countDiff;
-        // Earlier timestamp first for tie-breaking (proxy for file order)
-        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-      });
-
-      // First record is main (richest), rest are phantom roots
+      // All other records are phantoms UNLESS they have different non-empty text
       for (let i = 1; i < sortedRecs.length; i++) {
-        phantomBranchRoots.push(sortedRecs[i]);
+        const rec = sortedRecs[i];
+        const recText = extractTextContent(rec).trim().toLowerCase();
+
+        // Different non-empty text = legitimate parallel branch, not phantom
+        const isLegitimateParallel = recText.length > 0 && recText !== mainText;
+
+        if (!isLegitimateParallel) {
+          phantomBranchRoots.push(rec);
+        }
       }
     }
 

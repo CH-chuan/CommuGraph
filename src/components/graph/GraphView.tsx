@@ -9,7 +9,7 @@
  * - Geometric/Force-directed layout
  */
 
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { ReactFlow, Background, Controls, type Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useAppContext } from '@/context/app-context';
@@ -37,15 +37,18 @@ export function GraphView() {
   const { data, isLoading, isError } = useGraphData(graphId, currentStep);
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null);
 
-  // Clear focus when timeline changes (scrubbing, chat log navigation, etc.)
-  useEffect(() => {
-    setFocusedAgentId(null);
-  }, [currentStep]);
+  // Auto-clear focus when context changes (timeline scrubbing, chat log navigation)
+  // Using a key-based reset pattern: when the context key changes, focus becomes null
+  const contextKey = `${currentStep}-${highlightedAgentId ?? ''}-${highlightedStepIndex ?? ''}`;
+  const [lastContextKey, setLastContextKey] = useState(contextKey);
 
-  // Clear focus when hovering over chat log or timeline (highlightedAgentId or highlightedStepIndex changes)
-  useEffect(() => {
-    setFocusedAgentId(null);
-  }, [highlightedAgentId, highlightedStepIndex]);
+  // Derive effective focus: null if context changed, otherwise current focus
+  const effectiveFocusedAgentId = contextKey !== lastContextKey ? null : focusedAgentId;
+
+  // Sync the context key after render to track changes
+  if (contextKey !== lastContextKey) {
+    setLastContextKey(contextKey);
+  }
 
   const { nodes, edges } = useMemo(() => {
     if (!data?.graph) return { nodes: [], edges: [] };
@@ -66,12 +69,12 @@ export function GraphView() {
 
     const reactFlowEdges = convertEdgesToReactFlow(data.graph.edges, {
       currentStep,
-      focusedAgentId, // Pass focused agent to edges
+      focusedAgentId: effectiveFocusedAgentId, // Pass focused agent to edges
       nodeColors,
     });
 
     return getLayoutedElements(reactFlowNodes, reactFlowEdges);
-  }, [data, highlightedAgentId, currentStep, focusedAgentId]);
+  }, [data, highlightedAgentId, currentStep, effectiveFocusedAgentId]);
 
   // Handle node single-click to clear focus
   const onNodeClick = useCallback(() => {
