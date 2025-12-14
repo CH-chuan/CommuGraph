@@ -357,14 +357,64 @@ This means signature dedup (Phase 1) is technically redundant - branch pruning h
 2. **Performance** - Fewer records to process in later phases
 3. **Safety** - If timestamp grouping misses something, signature dedup catches it
 
+### Assistant Record Deduplication by messageId
+
+Even after phantom branch pruning, some phantom assistant records may survive (e.g., when the phantom root user record wasn't identified as a phantom due to having "different non-empty text"). These phantom assistant records have:
+
+- **Same requestId** - same Claude API request
+- **Same messageId** - same Claude API response (e.g., `msg_01En82gokp8XpJUb`)
+- **Same timestamp**
+- **Identical content** (thinking, text, tool_use)
+- **Different UUIDs** (different log records from phantom branches)
+
+When `mergeAssistantRecords()` groups records by `requestId`, phantom branch duplicates get combined, causing:
+- Duplicate `[Thinking]` content (same thinking appended twice)
+- Duplicate `[Response]` text (same text appended twice)
+- Duplicate tool_use entries (same tool call pushed twice)
+
+**Solution:** Deduplicate by `messageId` within each `requestId` group:
+
+```typescript
+// mergeAssistantRecords() in claude-code-parser.ts
+const processedMessageIds = new Set<string>();
+const seenToolUseIds = new Set<string>();
+
+for (const record of records) {
+  const msg = record.message as AssistantMessage;
+  if (!msg?.content) continue;
+
+  // Skip if we've already processed a record with this messageId
+  // (phantom branches have same messageId but different UUIDs)
+  if (processedMessageIds.has(msg.id)) {
+    continue;
+  }
+  processedMessageIds.add(msg.id);
+
+  for (const content of msg.content) {
+    if (content.type === 'thinking') {
+      response.thinking = (response.thinking || '') + content.thinking;
+    } else if (content.type === 'text') {
+      response.text = (response.text || '') + content.text;
+    } else if (content.type === 'tool_use') {
+      // Additional safety: deduplicate by tool_use_id
+      if (!seenToolUseIds.has(content.id)) {
+        seenToolUseIds.add(content.id);
+        response.toolCalls.push({...});
+      }
+    }
+  }
+}
+```
+
 ### Implementation Locations
 
 | Component | File | Method |
 |-----------|------|--------|
 | Workflow/ChatLog | `src/lib/parsers/claude-code-parser.ts` | `prunePhantomBranches()` |
 | Annotation View | `src/lib/annotation/preprocessor.ts` | `prunePhantomBranches()` |
+| Assistant Merging | `src/lib/parsers/claude-code-parser.ts` | `mergeAssistantRecords()` |
 
-Branch pruning runs **before** topological sorting.
+Branch pruning runs **before** topological sorting. Assistant deduplication runs during record merging.
 
 ---
 

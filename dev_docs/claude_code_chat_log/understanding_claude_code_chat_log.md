@@ -422,3 +422,103 @@ For task management:
   ]
 }
 ```
+
+---
+
+## Phantom Branches (Claude Code Logging Bug)
+
+### Overview
+
+Claude Code has a logging bug where certain user messages (especially those containing images) get logged multiple times with different UUIDs. This creates "phantom branches" - parallel conversation trees that contain duplicate content.
+
+### Pattern
+
+When a user sends a message with images, Claude Code may create multiple records:
+
+```
+Timestamp: 2025-12-09T20:26:17.257Z (4 records at same timestamp!)
+  Line 737: uuid=461dbbb6 parent=e15b4dfc content=[image, image, text] ← Complete, "real" record
+  Line 983: uuid=2dace94c parent=e15b4dfc content=[image]              ← Phantom branch root (same parent!)
+  Line 984: uuid=11e65b52 parent=2dace94c content=[image]              ← Child of phantom
+  Line 985: uuid=3b608efe parent=11e65b52 content=[text]               ← Child of phantom
+```
+
+Key indicators:
+- **Same timestamp** across multiple records
+- **Same parentUuid** for records that should be siblings (fork point)
+- **Partial content** in phantom records vs complete content in real record
+- **Subsequent records** in phantom branches have the **same timestamps** as their counterparts in the real branch
+
+### Impact on Assistant Records
+
+The phantom branches continue through assistant responses:
+```
+Timestamp: 2025-12-09T20:26:42.163Z (2 records)
+  Line 738: uuid=332cd646 parent=461dbbb6 requestId=req_011C messageId=msg_01En82... ← Real branch
+  Line 986: uuid=01bb3ef9 parent=3b608efe requestId=req_011C messageId=msg_01En82... ← Phantom branch
+```
+
+Both assistant records have:
+- **Same requestId** - same Claude API request
+- **Same messageId** - same Claude API response
+- **Same timestamp**
+- **Identical content** (thinking, text, tool_use)
+- **Different UUIDs** and **different parentUuids**
+
+### CommuGraph Handling
+
+CommuGraph handles phantom branches at two levels:
+
+#### 1. User Record Pruning (`prunePhantomBranches` in claude-code-parser.ts)
+
+Groups user records (excluding tool_results) by timestamp, keeps the "richest" record (most content blocks), and prunes others via BFS traversal of descendants.
+
+```typescript
+// Groups user records by timestamp
+const timestampGroups = new Map<string, RawLogRecord[]>();
+
+// Identifies richest record and marks others as phantom roots
+const sortedRecs = [...recs].sort((a, b) => getContentCount(b) - getContentCount(a));
+const mainRecord = sortedRecs[0];
+
+// BFS from phantom roots collects all descendant UUIDs for removal
+const phantomUuids = new Set<string>();
+```
+
+#### 2. Assistant Record Deduplication (`mergeAssistantRecords` in claude-code-parser.ts)
+
+When merging chunked assistant records by `requestId`, deduplicates by `messageId` to prevent duplicate content:
+
+```typescript
+// Track processed messageIds to avoid duplicate content
+const processedMessageIds = new Set<string>();
+
+for (const record of records) {
+  const msg = record.message;
+
+  // Skip if we've already processed a record with this messageId
+  if (processedMessageIds.has(msg.id)) {
+    continue;
+  }
+  processedMessageIds.add(msg.id);
+
+  // Process content...
+}
+```
+
+This prevents:
+- Duplicate `[Thinking]` content
+- Duplicate `[Response]` text
+- Duplicate tool_use entries
+
+### Debugging Phantom Branches
+
+To identify phantom branches in a JSONL file:
+
+```bash
+# Find user records with same timestamp
+cat session.jsonl | jq -r 'select(.type == "user") | "\(.timestamp) \(.uuid[:8]) parent=\(.parentUuid[:8] // "NULL")"' | sort | uniq -d -f0
+
+# Find assistant records with same (timestamp, requestId, messageId)
+cat session.jsonl | jq -r 'select(.type == "assistant") | "\(.timestamp) \(.requestId[:12]) \(.message.id[:12]) uuid=\(.uuid[:8])"' | sort | uniq -d -f0
+```
