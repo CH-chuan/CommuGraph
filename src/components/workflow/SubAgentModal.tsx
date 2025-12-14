@@ -10,7 +10,7 @@
  * - Agent metadata header
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import {
   ReactFlow,
   Background,
@@ -78,7 +78,8 @@ function layoutSubAgentNodes(
  */
 function convertSubAgentToReactFlow(
   workflowData: WorkflowGraphSnapshot,
-  agentId: string
+  agentId: string,
+  onImageClick: (image: { mediaType: string; data: string }) => void
 ): { nodes: Node[]; edges: Edge[]; totalHeight: number; agentInfo: WFNode['subAgentInfo'] } {
   // Find nodes and edges for this sub-agent
   const laneId = `agent-${agentId.substring(0, 8)}`;
@@ -125,6 +126,9 @@ function convertSubAgentToReactFlow(
       toolResultStatus: node.toolResultStatus,
       toolResultStdout: node.toolResultStdout,
       toolResultStderr: node.toolResultStderr,
+      // Image content
+      images: node.images,
+      onImageClick,
     },
     style: { width: node.width },
   }));
@@ -189,13 +193,20 @@ export function SubAgentModal({
   graphId,
   workflowData,
 }: SubAgentModalProps) {
+  const [modalImage, setModalImage] = useState<{ mediaType: string; data: string } | null>(null);
+
+  // Handle image click for full-size modal
+  const handleImageClick = useCallback((image: { mediaType: string; data: string }) => {
+    setModalImage(image);
+  }, []);
+
   // Convert sub-agent data to React Flow format
   const { nodes, edges, totalHeight, agentInfo } = useMemo(() => {
     if (!agentId) {
       return { nodes: [], edges: [], totalHeight: 0, agentInfo: undefined };
     }
-    return convertSubAgentToReactFlow(workflowData, agentId);
-  }, [workflowData, agentId]);
+    return convertSubAgentToReactFlow(workflowData, agentId, handleImageClick);
+  }, [workflowData, agentId, handleImageClick]);
 
   if (!agentId) return null;
 
@@ -279,6 +290,29 @@ export function SubAgentModal({
             </ReactFlow>
           )}
         </div>
+
+        {/* Image Modal */}
+        {modalImage && (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70"
+            onClick={() => setModalImage(null)}
+          >
+            <div className="relative max-w-[90vw] max-h-[90vh]">
+              <img
+                src={`data:${modalImage.mediaType};base64,${modalImage.data}`}
+                alt="Full size"
+                className="max-w-full max-h-[90vh] object-contain rounded-lg"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <button
+                onClick={() => setModalImage(null)}
+                className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-gray-100 transition-colors"
+              >
+                <span className="text-gray-600 text-xl leading-none">&times;</span>
+              </button>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

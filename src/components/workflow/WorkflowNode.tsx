@@ -79,6 +79,23 @@ export interface WorkflowNodeData {
 
   // Callback for sub-agent expansion
   onExpandSubAgent?: (agentId: string) => void;
+
+  // Context compaction fields
+  isContextCompact?: boolean;
+  compactSummary?: string;
+  compactMetadata?: {
+    trigger: string;
+    preTokens: number;
+  };
+
+  // Image content from user messages
+  images?: {
+    mediaType: string;
+    data: string;
+  }[];
+
+  // Callback for opening full-size image
+  onImageClick?: (image: { mediaType: string; data: string }) => void;
 }
 
 // Tool icon mapping
@@ -369,6 +386,52 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
     return <ResultNodeComponent data={nodeData} selected={selected} />;
   }
 
+  // Special rendering for context compact nodes
+  if (nodeData.nodeType === 'system_notice' && nodeData.isContextCompact) {
+    return (
+      <div
+        className={`
+          bg-white rounded-lg shadow-md border-2 border-slate-400 min-w-[200px] max-w-[280px]
+          ${selected ? 'ring-2 ring-offset-1 ring-blue-400 shadow-lg' : ''}
+          ${nodeData.isHighlighted ? 'ring-2 ring-offset-1 ring-amber-400' : ''}
+        `}
+      >
+        <Handle
+          type="target"
+          position={Position.Top}
+          className="!bg-slate-400 !w-2 !h-2"
+        />
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          className="!bg-slate-400 !w-2 !h-2"
+        />
+
+        {/* Header with grey styling */}
+        <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-t-md">
+          <Settings className="w-4 h-4 text-slate-500" />
+          <span className="text-sm font-semibold text-slate-600">
+            Context Compact
+          </span>
+        </div>
+
+        {/* Compact info */}
+        <div className="px-3 py-2">
+          {nodeData.compactMetadata?.preTokens && (
+            <p className="text-xs text-slate-500">
+              Tokens: {nodeData.compactMetadata.preTokens.toLocaleString()}
+            </p>
+          )}
+          {nodeData.compactMetadata?.trigger && (
+            <p className="text-xs text-slate-500">
+              Trigger: {nodeData.compactMetadata.trigger}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // Special rendering for Task tool calls (sub-agent calls)
   if (nodeData.nodeType === 'tool_call' && nodeData.isSubAgentContainer && nodeData.subAgentInfo) {
     return <SubAgentToolCallComponent data={nodeData} selected={selected} />;
@@ -452,6 +515,23 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
 
       {/* Content Preview */}
       <div className="px-3 py-2">
+        {/* Image thumbnails - render before text */}
+        {nodeData.images && nodeData.images.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {nodeData.images.map((img, imgIdx) => (
+              <img
+                key={imgIdx}
+                src={`data:${img.mediaType};base64,${img.data}`}
+                alt={`Image ${imgIdx + 1}`}
+                className="max-h-12 max-w-16 rounded border border-slate-200 object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  nodeData.onImageClick?.(img);
+                }}
+              />
+            ))}
+          </div>
+        )}
         <p className="text-xs text-slate-600 line-clamp-2">
           {nodeData.contentPreview}
         </p>

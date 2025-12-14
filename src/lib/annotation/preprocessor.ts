@@ -28,8 +28,11 @@ import {
   type SourcePointers,
   type ToolSummary,
   type ToolCallSummary,
+  type ImageContent,
+  type UserTextContent,
   makeAssistantEventId,
   makeUserTurnEventId,
+  makeSystemTurnEventId,
 } from './types';
 
 // ============================================================================
@@ -48,6 +51,7 @@ interface AssistantTurn {
   model: string;
   isSidechain: boolean;
   agentId?: string;
+  parentUuid: string | null;
 }
 
 interface ToolResultInfo {
@@ -107,6 +111,128 @@ export class AnnotationPreprocessor {
         console.warn(`Skipping invalid JSON on line ${i + 1}`);
       }
     }
+
+    // Prune phantom branches (handles Claude Code logging bug)
+    this.records = this.prunePhantomBranches(this.records);
+  }
+
+  /**
+   * Prune phantom branches caused by Claude Code logging bug.
+   *
+   * Claude Code sometimes logs the same user message multiple times with different
+   * UUIDs when images are involved. These duplicates share the same timestamp but
+   * may have different parentUuids and content richness.
+   *
+   * Strategy (timestamp-based):
+   * 1. Deduplicate assistant records by signature
+   * 2. Group user records (with array content) by timestamp
+   * 3. For each timestamp group with multiple records, keep only the richest one
+   * 4. Collect all UUIDs in phantom branches (descendants of partial records)
+   * 5. Exclude all records in phantom branches
+   */
+  private prunePhantomBranches(records: ParsedLine[]): ParsedLine[] {
+    // Phase 1: Deduplicate assistant records by signature
+    const assistantSeen = new Set<string>();
+    const afterAssistantDedup: ParsedLine[] = [];
+
+    for (const parsed of records) {
+      const record = parsed.record;
+
+      if (record.type === 'assistant') {
+        const msg = record.message as AssistantMessage | undefined;
+        if (msg?.content && Array.isArray(msg.content)) {
+          // Find signature in thinking content
+          let signature: string | undefined;
+          for (const c of msg.content) {
+            if (c.type === 'thinking' && (c as ThinkingContent).signature) {
+              signature = (c as ThinkingContent).signature;
+              break;
+            }
+          }
+
+          if (signature) {
+            const key = [
+              'assistant',
+              signature.slice(0, 60),
+              msg.id || '',
+              record.requestId || '',
+              record.timestamp || '',
+            ].join('|');
+
+            if (assistantSeen.has(key)) {
+              continue; // Duplicate - skip
+            }
+            assistantSeen.add(key);
+          }
+        }
+      }
+      afterAssistantDedup.push(parsed);
+    }
+
+    // Phase 2: Build parent -> children map for BFS traversal later
+    const childrenMap = new Map<string | null, ParsedLine[]>();
+    for (const parsed of afterAssistantDedup) {
+      const parent = parsed.record.parentUuid ?? null;
+      if (!childrenMap.has(parent)) childrenMap.set(parent, []);
+      childrenMap.get(parent)!.push(parsed);
+    }
+
+    // Phase 3: Group user records (with array content) by timestamp
+    const timestampGroups = new Map<string, ParsedLine[]>();
+    for (const parsed of afterAssistantDedup) {
+      const record = parsed.record;
+      if (record.type !== 'user') continue;
+      const msg = record.message as UserMessage | undefined;
+      if (!msg?.content || !Array.isArray(msg.content)) continue;
+
+      const ts = record.timestamp;
+      if (!timestampGroups.has(ts)) timestampGroups.set(ts, []);
+      timestampGroups.get(ts)!.push(parsed);
+    }
+
+    // Phase 4: Identify phantom roots (partial records at same timestamp)
+    const phantomBranchRoots: ParsedLine[] = [];
+
+    for (const [, recs] of timestampGroups.entries()) {
+      if (recs.length <= 1) continue;
+
+      // Sort by content count descending, then by line number for tie-breaking
+      const getContentCount = (p: ParsedLine): number => {
+        const r = p.record;
+        const msg = r.message as UserMessage;
+        return Array.isArray(msg.content) ? msg.content.length : 0;
+      };
+
+      const sortedRecs = [...recs].sort((a, b) => {
+        const countDiff = getContentCount(b) - getContentCount(a);
+        if (countDiff !== 0) return countDiff;
+        return a.lineNumber - b.lineNumber;
+      });
+
+      // First record is main (richest), rest are phantom roots
+      for (let i = 1; i < sortedRecs.length; i++) {
+        phantomBranchRoots.push(sortedRecs[i]);
+      }
+    }
+
+    // Phase 5: Collect all UUIDs in phantom branches (BFS from phantom roots)
+    const phantomUuids = new Set<string>();
+
+    for (const root of phantomBranchRoots) {
+      const queue = [root];
+      while (queue.length > 0) {
+        const parsed = queue.shift()!;
+        if (phantomUuids.has(parsed.record.uuid)) continue;
+        phantomUuids.add(parsed.record.uuid);
+
+        // Add children of this record to queue
+        const children = childrenMap.get(parsed.record.uuid) || [];
+        queue.push(...children);
+      }
+    }
+
+    // Phase 6: Filter out phantom branch records
+    return afterAssistantDedup.filter(p => !phantomUuids.has(p.record.uuid));
   }
 
   /**
@@ -125,28 +251,93 @@ export class AnnotationPreprocessor {
 
   /**
    * Check if a user record is a direct user prompt (not tool result or meta).
+   * Now supports mixed content arrays with images + text.
    */
   private isUserPrompt(record: RawLogRecord): boolean {
     if (record.type !== 'user') return false;
     if (record.isMeta) return false;
+    // Skip compact summary records (will be merged with system_turn)
+    if (record.isCompactSummary) return false;
 
     const userMsg = record.message as UserMessage | undefined;
     if (!userMsg) return false;
 
-    // Must be string content (not array of tool_results)
-    if (typeof userMsg.content !== 'string') return false;
+    // String content - original logic
+    if (typeof userMsg.content === 'string') {
+      const content = userMsg.content;
 
-    const content = userMsg.content;
+      // Skip system-generated messages (but NOT <command-name> which are user slash commands)
+      if (content.includes('<local-command-')) return false;
+      if (content.includes('<bash-notification>')) return false;
 
-    // Skip command messages
-    if (content.includes('<command-name>')) return false;
-    if (content.includes('<local-command-')) return false;
-    if (content.includes('<bash-notification>')) return false;
+      // Skip empty or very short content
+      if (content.trim().length < 5) return false;
 
-    // Skip empty or very short content
-    if (content.trim().length < 5) return false;
+      return true;
+    }
 
-    return true;
+    // Array content - check if it contains text or image (not just tool_results)
+    if (Array.isArray(userMsg.content)) {
+      const hasUserContent = userMsg.content.some(
+        item => item.type === 'text' || item.type === 'image'
+      );
+      // Skip if only tool results
+      if (!hasUserContent) return false;
+
+      // Extract text to check for system-generated messages (but NOT <command-name> which are user slash commands)
+      const textContent = this.extractTextFromMixedContent(userMsg.content);
+      if (textContent.includes('<local-command-')) return false;
+      if (textContent.includes('<bash-notification>')) return false;
+
+      // Check if there's meaningful content (text or images)
+      const hasImages = userMsg.content.some(item => item.type === 'image');
+      if (hasImages) return true; // Images are always meaningful
+
+      // Check text length
+      if (textContent.trim().length < 5) return false;
+
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Extract text content from mixed content array.
+   */
+  private extractTextFromMixedContent(content: UserMessage['content']): string {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return '';
+
+    const textParts: string[] = [];
+    for (const item of content) {
+      if (item.type === 'text') {
+        textParts.push((item as UserTextContent).text);
+      }
+    }
+    return textParts.join('\n');
+  }
+
+  /**
+   * Extract images from mixed content array.
+   */
+  private extractImagesFromMixedContent(content: UserMessage['content']): { mediaType: string; data: string }[] | undefined {
+    if (typeof content === 'string') return undefined;
+    if (!Array.isArray(content)) return undefined;
+
+    const images: { mediaType: string; data: string }[] = [];
+    for (const item of content) {
+      if (item.type === 'image') {
+        const imgItem = item as ImageContent;
+        if (imgItem.source?.type === 'base64' && imgItem.source.data) {
+          images.push({
+            mediaType: imgItem.source.media_type,
+            data: imgItem.source.data,
+          });
+        }
+      }
+    }
+    return images.length > 0 ? images : undefined;
   }
 
   /**
@@ -221,6 +412,7 @@ export class AnnotationPreprocessor {
           model: assistantMsg.model,
           isSidechain: record.isSidechain,
           agentId: record.agentId,
+          parentUuid: record.parentUuid,
         };
         turns.set(key, turn);
       }
@@ -304,6 +496,97 @@ export class AnnotationPreprocessor {
   }
 
   /**
+   * Sort annotation records by following the uuid → parentUuid chain.
+   * This produces a topological ordering that respects the conversation tree structure.
+   */
+  private topologicalSort(records: AnnotationRecord[]): AnnotationRecord[] {
+    // Build uuid -> record map
+    // IMPORTANT: Register ALL raw_uuids, not just the first one.
+    // This is because grouped assistant turns have multiple uuids,
+    // and children may reference ANY of them as their parent.
+    const byUuid = new Map<string, AnnotationRecord>();
+    for (const record of records) {
+      for (const uuid of record.source.raw_uuids || []) {
+        byUuid.set(uuid, record);
+      }
+    }
+
+    // Build parent -> children adjacency
+    const children = new Map<string | null, AnnotationRecord[]>();
+    for (const record of records) {
+      const parentUuid = record.source.parent_uuid ?? null;
+      const list = children.get(parentUuid) || [];
+      list.push(record);
+      children.set(parentUuid, list);
+    }
+
+    // DFS from roots
+    const result: AnnotationRecord[] = [];
+    const visited = new Set<AnnotationRecord>();
+
+    const dfs = (uuid: string | null) => {
+      const childRecords = children.get(uuid) || [];
+      // Sort children by timestamp as tiebreaker for siblings
+      childRecords.sort((a, b) => {
+        const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return ta - tb;
+      });
+
+      for (const record of childRecords) {
+        if (visited.has(record)) continue;
+        visited.add(record);
+
+        result.push(record);
+        // Traverse children from ALL uuids in this record
+        for (const recordUuid of record.source.raw_uuids || []) {
+          dfs(recordUuid);
+        }
+      }
+    };
+
+    // Start from null parent (root)
+    dfs(null);
+
+    // Handle orphaned records whose parent is not in our set
+    // These become additional roots in the traversal
+    // Sort orphans by timestamp to process them in chronological order
+    const orphans = records.filter(r => {
+      if (visited.has(r)) return false;
+      const parentUuid = r.source.parent_uuid;
+      return parentUuid && !byUuid.has(parentUuid);
+    });
+    orphans.sort((a, b) => {
+      const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return ta - tb;
+    });
+
+    for (const record of orphans) {
+      if (visited.has(record)) continue;
+      // Treat as root and traverse its children
+      visited.add(record);
+      result.push(record);
+      for (const recordUuid of record.source.raw_uuids || []) {
+        dfs(recordUuid);
+      }
+    }
+
+    // Handle any remaining unvisited records (sorted by timestamp)
+    const remaining = records.filter(r => !visited.has(r));
+    remaining.sort((a, b) => {
+      const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return ta - tb;
+    });
+    for (const record of remaining) {
+      result.push(record);
+    }
+
+    return result;
+  }
+
+  /**
    * Generate annotation records from parsed data.
    */
   generateAnnotationRecords(): AnnotationRecord[] {
@@ -318,7 +601,8 @@ export class AnnotationPreprocessor {
       if (!this.isUserPrompt(record)) continue;
 
       const userMsg = record.message as UserMessage;
-      const content = typeof userMsg.content === 'string' ? userMsg.content : '';
+      const textContent = this.extractTextFromMixedContent(userMsg.content);
+      const images = this.extractImagesFromMixedContent(userMsg.content);
 
       output.push({
         session_id: this.sessionId,
@@ -331,10 +615,12 @@ export class AnnotationPreprocessor {
           raw_line_range: [lineNumber, lineNumber],
           raw_uuids: [record.uuid],
           is_sidechain: false,
+          parent_uuid: record.parentUuid,
         },
         timestamp: record.timestamp,
         text_or_artifact_ref: {
-          text: content,
+          text: textContent,
+          images,
         },
         labels: [],
       });
@@ -357,6 +643,7 @@ export class AnnotationPreprocessor {
         request_id: turn.requestId,
         message_id: turn.messageId,
         is_sidechain: false,
+        parent_uuid: turn.parentUuid,
       };
 
       // Add tool_use_ids if present
@@ -407,14 +694,60 @@ export class AnnotationPreprocessor {
       output.push(record);
     }
 
-    // Sort by timestamp
-    output.sort((a, b) => {
-      const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return ta - tb;
-    });
+    // 3. Generate system_turn records for context compaction
+    // Build index of compact summary records by parentUuid
+    const compactSummaryByParentUuid = new Map<string, { lineNumber: number; record: RawLogRecord }>();
+    for (const { lineNumber, record } of mainRecords) {
+      if (record.type === 'user' && record.isCompactSummary && record.parentUuid) {
+        compactSummaryByParentUuid.set(record.parentUuid, { lineNumber, record });
+      }
+    }
 
-    return output;
+    // Find compact_boundary system records and merge with summaries
+    for (const { lineNumber, record } of mainRecords) {
+      if (record.type !== 'system' || record.subtype !== 'compact_boundary') continue;
+
+      // Look up matching compact summary
+      const summaryEntry = compactSummaryByParentUuid.get(record.uuid);
+      let summaryContent = '';
+      const rawUuids = [record.uuid];
+      const lineNumbers = [lineNumber];
+
+      if (summaryEntry) {
+        const userMsg = summaryEntry.record.message as UserMessage | undefined;
+        if (userMsg && typeof userMsg.content === 'string') {
+          summaryContent = userMsg.content;
+        }
+        rawUuids.push(summaryEntry.record.uuid);
+        lineNumbers.push(summaryEntry.lineNumber);
+      }
+
+      output.push({
+        session_id: this.sessionId,
+        event_id: makeSystemTurnEventId(record.uuid),
+        actor_id: 'system',
+        actor_type: 'system',
+        unit_type: 'system_turn',
+        source: {
+          raw_file: this.rawFile,
+          raw_line_range: [Math.min(...lineNumbers), Math.max(...lineNumbers)],
+          raw_uuids: rawUuids,
+          is_sidechain: false,
+          // Use logicalParentUuid for context compaction continuity
+          parent_uuid: record.logicalParentUuid ?? record.parentUuid,
+        },
+        timestamp: record.timestamp,
+        text_or_artifact_ref: {
+          text: summaryContent || record.content || 'Context compacted',
+        },
+        labels: [],
+        // Store compact metadata for UI display
+        compact_metadata: record.compactMetadata,
+      });
+    }
+
+    // Sort by parent-child relationship chain (topological order)
+    return this.topologicalSort(output);
   }
 
   /**

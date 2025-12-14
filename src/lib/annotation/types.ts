@@ -9,13 +9,13 @@
 // Unit Types
 // ============================================================================
 
-export type UnitType = 'assistant_turn' | 'user_turn';
+export type UnitType = 'assistant_turn' | 'user_turn' | 'system_turn';
 
 // ============================================================================
 // Actor Types
 // ============================================================================
 
-export type ActorType = 'human' | 'agent';
+export type ActorType = 'human' | 'agent' | 'system';
 export type RoleType = 'delegator' | 'proxy' | 'mixed' | 'unknown';
 export type AgentKind = 'main' | 'sub' | 'unknown';
 
@@ -104,6 +104,8 @@ export interface SourcePointers {
   is_sidechain?: boolean;
   /** Agent ID if from sidechain */
   agent_id?: string;
+  /** Parent UUID for sequencing (parentUuid from raw records) */
+  parent_uuid?: string | null;
 }
 
 // ============================================================================
@@ -128,6 +130,11 @@ export interface TextOrArtifactRef {
   tool_call_id?: string;
   /** Path to artifact (e.g., file written) */
   artifact_path?: string;
+  /** Image content from user messages (base64) */
+  images?: {
+    mediaType: string;
+    data: string;
+  }[];
 }
 
 // ============================================================================
@@ -157,6 +164,11 @@ export interface AnnotationRecord {
   text_or_artifact_ref: TextOrArtifactRef;
   /** Labels (empty for preprocessing, filled during annotation) */
   labels: LabelRecord[];
+  /** Compact metadata (only for system_turn with context compaction) */
+  compact_metadata?: {
+    trigger: string;
+    preTokens: number;
+  };
 }
 
 // ============================================================================
@@ -177,6 +189,14 @@ export function makeAssistantEventId(requestId: string | undefined, messageId: s
  */
 export function makeUserTurnEventId(rawUuid: string): string {
   return `U:${rawUuid}`;
+}
+
+/**
+ * Generate event_id for system_turn unit.
+ * Pattern: S:{raw_uuid}
+ */
+export function makeSystemTurnEventId(rawUuid: string): string {
+  return `S:${rawUuid}`;
 }
 
 // ============================================================================
@@ -223,9 +243,28 @@ export interface AssistantMessage {
   };
 }
 
+/** Image content in user messages */
+export interface ImageContent {
+  type: 'image';
+  source: {
+    type: 'base64' | 'url';
+    media_type: string;
+    data: string;
+  };
+}
+
+/** Text content in mixed user message arrays */
+export interface UserTextContent {
+  type: 'text';
+  text: string;
+}
+
+/** Mixed user content can be images, text, or tool results */
+export type MixedUserContent = (ImageContent | UserTextContent | ToolResultContent)[];
+
 export interface UserMessage {
   role: 'user';
-  content: string | ToolResultContent[];
+  content: string | MixedUserContent;
 }
 
 export interface RawLogRecord {
@@ -246,4 +285,12 @@ export interface RawLogRecord {
     level: string;
     disabled: boolean;
   };
+  // System record fields
+  content?: string;
+  compactMetadata?: {
+    trigger: string;
+    preTokens: number;
+  };
+  // Context compaction summary
+  isCompactSummary?: boolean;
 }

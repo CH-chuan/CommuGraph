@@ -12,9 +12,10 @@ import { useMemo, useRef, useEffect, useState } from 'react';
 import { useAppContext } from '@/context/app-context';
 import { useGraphData } from '@/hooks/use-graph-data';
 import { useWorkflowData } from '@/hooks/use-workflow-data';
+import { useAnnotationData } from '@/hooks/use-annotation-data';
 import { getAgentColor } from '@/utils/graph-adapters';
 import { formatSubAgentName, extractAgentIdFromLaneId } from '@/utils/agent-naming';
-import { MessageSquare, ArrowRight, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
+import { MessageSquare, ArrowRight, ChevronDown, ChevronUp, Eye, EyeOff, Settings } from 'lucide-react';
 import type { WorkflowNodeType } from '@/lib/models/types';
 
 interface ChatMessage {
@@ -26,6 +27,18 @@ interface ChatMessage {
   timestamp?: string;
   nodeType?: WorkflowNodeType; // For Claude Code messages
   laneId?: string; // For Claude Code - 'main' or 'agent-{id}'
+  // Context compaction fields
+  isContextCompact?: boolean;
+  compactSummary?: string;
+  compactMetadata?: {
+    trigger: string;
+    preTokens: number;
+  };
+  // Image content from user messages
+  images?: {
+    mediaType: string;
+    data: string;
+  }[];
 }
 
 // Color config matching WorkflowNode.tsx
@@ -93,15 +106,81 @@ export function ChatLog() {
   const { data: workflowData, isLoading: workflowLoading } = useWorkflowData(
     isClaudeCode ? graphId : null // Only fetch for Claude Code
   );
+  // Fetch annotation data for annotation view to sync step numbers
+  const { data: annotationData } = useAnnotationData(
+    isAnnotationView ? graphId : null
+  );
 
   const isLoading = isClaudeCode ? workflowLoading : graphLoading;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const highlightedMessageRef = useRef<HTMLDivElement>(null);
-  const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
-    null
+  const [expandedMessageIds, setExpandedMessageIds] = useState<Set<string>>(
+    new Set()
   );
   const [animatingStepIndex, setAnimatingStepIndex] = useState<number | null>(null);
+  const [modalImage, setModalImage] = useState<{
+    mediaType: string;
+    data: string;
+  } | null>(null);
+
+  // Build mapping from workflow stepIndex to annotation sequenceIndex for annotation view
+  const stepToAnnotationIndexMap = useMemo(() => {
+    const map = new Map<number, number>();
+
+    if (!isAnnotationView || !annotationData?.annotations || !workflowData?.workflow) {
+      return map;
+    }
+
+    const workflowNodes = workflowData.workflow.nodes
+      .filter(n => !n.isSessionStart && n.laneId === 'main')
+      .sort((a, b) => a.stepIndex - b.stepIndex);
+
+    const annotations = annotationData.annotations;
+
+    // Sort workflow nodes by timestamp
+    const sortedNodes = workflowNodes
+      .map(node => ({
+        node,
+        time: node.timestamp ? new Date(node.timestamp).getTime() : 0
+      }))
+      .filter(n => n.time > 0)
+      .sort((a, b) => a.time - b.time);
+
+    // Sort annotations by timestamp with their 1-indexed sequence
+    const sortedAnnotations = annotations
+      .map((record, index) => ({
+        record,
+        sequenceIndex: index + 1, // 1-indexed to match AnnotationView
+        time: record.timestamp ? new Date(record.timestamp).getTime() : 0
+      }))
+      .filter(a => a.time > 0)
+      .sort((a, b) => a.time - b.time);
+
+    // For each workflow node, find the closest annotation by timestamp
+    sortedNodes.forEach(({ node, time: nodeTime }) => {
+      let closestAnnotationSeq = -1;
+      let closestDiff = Infinity;
+
+      for (const { sequenceIndex, time: annotationTime } of sortedAnnotations) {
+        const diff = Math.abs(annotationTime - nodeTime);
+        if (diff < closestDiff) {
+          closestDiff = diff;
+          closestAnnotationSeq = sequenceIndex;
+        }
+        // Early exit if we've passed the node time and diff is increasing
+        if (annotationTime > nodeTime && diff > closestDiff) {
+          break;
+        }
+      }
+
+      if (closestAnnotationSeq >= 0) {
+        map.set(node.stepIndex, closestAnnotationSeq);
+      }
+    });
+
+    return map;
+  }, [isAnnotationView, annotationData?.annotations, workflowData?.workflow]);
 
   // Extract messages based on framework
   const { messages, agentColors, mainStepIndices } = useMemo(() => {
@@ -158,6 +237,16 @@ export function ChatLog() {
       // Helper to get display step label
       const getDisplayStepLabel = (node: typeof workflow.nodes[0]): string => {
         if (node.isSessionStart) return '';
+
+        // In annotation view, use annotation index for main agent messages
+        if (isAnnotationView && node.laneId === 'main') {
+          const annotationSeq = stepToAnnotationIndexMap.get(node.stepIndex);
+          if (annotationSeq !== undefined) {
+            return `#${annotationSeq}`;
+          }
+          // Fallback to workflow-based numbering if no mapping found
+        }
+
         if (node.laneId === 'main') {
           const mainStep = mainAgentStepMap.get(node.stepIndex);
           return mainStep !== undefined ? `#${mainStep}` : `#${node.stepIndex}`;
@@ -170,10 +259,11 @@ export function ChatLog() {
         return `sub-${agentIdShort}-${seq}`;
       };
 
-      // Filter nodes based on showSubAgentMessages toggle
-      const filteredNodes = showSubAgentMessages
+      // Filter nodes based on showSubAgentMessages toggle (exclude session start nodes)
+      const filteredNodes = (showSubAgentMessages
         ? workflow.nodes
-        : workflow.nodes.filter((node) => node.laneId === 'main');
+        : workflow.nodes.filter((node) => node.laneId === 'main')
+      ).filter((node) => !node.isSessionStart);
 
       // Extract messages from workflow nodes
       const allMessages: ChatMessage[] = filteredNodes.map((node) => {
@@ -203,6 +293,12 @@ export function ChatLog() {
           timestamp: node.timestamp,
           nodeType: node.nodeType, // For color matching with graph nodes
           laneId: node.laneId, // For determining if main agent or sub-agent
+          // Context compaction fields
+          isContextCompact: node.isContextCompact,
+          compactSummary: node.compactSummary,
+          compactMetadata: node.compactMetadata,
+          // Image content from user messages
+          images: node.images,
         };
       });
 
@@ -247,7 +343,7 @@ export function ChatLog() {
     allMessages.sort((a, b) => a.stepIndex - b.stepIndex);
 
     return { messages: allMessages, agentColors: colors, mainStepIndices: [] };
-  }, [isClaudeCode, workflowData, graphData, showSubAgentMessages]);
+  }, [isClaudeCode, workflowData, graphData, showSubAgentMessages, isAnnotationView, stepToAnnotationIndexMap]);
 
   // For Claude Code, compute effectiveStepIndex from currentStep (main agent step number)
   const effectiveStepIndex = useMemo(() => {
@@ -327,7 +423,11 @@ export function ChatLog() {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-semibold text-lg">Chat Log</h3>
-            <p className="text-xs text-slate-500">{messages.length} messages</p>
+            <p className="text-xs text-slate-500">
+              {isAnnotationView && annotationData?.total
+                ? `${annotationData.total} records`
+                : `${messages.length} messages`}
+            </p>
           </div>
           {/* Sub-agent toggle - only show for Claude Code */}
           {isClaudeCode && (
@@ -376,7 +476,7 @@ export function ChatLog() {
                 : null;
 
               const messageId = `${msg.stepIndex}-${index}`;
-              const isExpanded = expandedMessageId === messageId;
+              const isExpanded = expandedMessageIds.has(messageId);
               // Show expand button for messages longer than 80 chars or if they have line breaks
               const isLongMessage =
                 msg.content.length > 80 || msg.content.includes('\n');
@@ -387,12 +487,82 @@ export function ChatLog() {
               // Check if this message should animate
               const isAnimating = msg.stepIndex === animatingStepIndex;
 
+              // Special rendering for context compact messages
+              if (msg.isContextCompact) {
+                return (
+                  <div
+                    key={messageId}
+                    ref={messageRef}
+                    className={`
+                      rounded-lg border-2 transition-all cursor-pointer overflow-hidden bg-white
+                      border-slate-400
+                      ${isHighlighted ? 'ring-2 ring-amber-400 ring-offset-1' : ''}
+                      ${isAnimating ? 'animate-pulse-highlight' : ''}
+                      ${!isPast ? 'opacity-40' : ''}
+                      hover:shadow-md
+                      active:scale-[0.98]
+                    `}
+                    title="Context compaction - click to expand summary"
+                    onClick={() => setHighlightedStepIndex(msg.stepIndex)}
+                    onDoubleClick={() => {
+                      setHighlightedStepIndex(msg.stepIndex);
+                      if (msg.laneId === 'main' || !msg.laneId) {
+                        setFocusStepIndex(msg.stepIndex);
+                      }
+                    }}
+                  >
+                    {/* Header: Context Compacted with icon */}
+                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-100">
+                      <Settings className="w-4 h-4 text-slate-500" />
+                      <span className="text-sm font-semibold text-slate-700">
+                        Context Compacted
+                      </span>
+                      {msg.compactMetadata?.preTokens && (
+                        <span className="ml-auto text-xs text-slate-500">
+                          {msg.compactMetadata.preTokens.toLocaleString()} tokens
+                        </span>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedMessageIds((prev) => {
+                            const next = new Set(prev);
+                            if (isExpanded) {
+                              next.delete(messageId);
+                            } else {
+                              next.add(messageId);
+                            }
+                            return next;
+                          });
+                        }}
+                        className="p-1 hover:bg-slate-200 rounded transition-colors"
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-slate-500" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-slate-500" />
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Collapsible summary content */}
+                    {isExpanded && msg.compactSummary && (
+                      <div className="px-3 py-2 max-h-64 overflow-y-auto border-t border-slate-200">
+                        <pre className="text-xs text-slate-600 whitespace-pre-wrap font-mono">
+                          {msg.compactSummary}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
               return (
                 <div
                   key={messageId}
                   ref={messageRef}
                   className={`
-                    rounded-lg border-2 transition-all cursor-pointer select-none overflow-hidden bg-white
+                    rounded-lg border-2 transition-all cursor-pointer overflow-hidden bg-white
                     ${typeColors
                       ? typeColors.border
                       : (isCurrent ? 'border-blue-500 shadow-sm' : 'border-slate-200')
@@ -439,9 +609,28 @@ export function ChatLog() {
 
                   {/* Content with expand/collapse (white background) */}
                   <div className="px-3 py-2">
+                    {/* Image thumbnails - render before text */}
+                    {msg.images && msg.images.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {msg.images.map((img, imgIdx) => (
+                          <img
+                            key={imgIdx}
+                            src={`data:${img.mediaType};base64,${img.data}`}
+                            alt={`Image ${imgIdx + 1}`}
+                            className="max-h-24 max-w-32 rounded border border-slate-200 object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setModalImage(img);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Text content */}
                     <div
                       className={`
-                        text-sm text-slate-700
+                        text-sm text-slate-700 whitespace-pre-wrap break-words
                         ${isExpanded ? 'max-h-64 overflow-y-auto' : 'line-clamp-2 overflow-hidden'}
                       `}
                     >
@@ -453,7 +642,15 @@ export function ChatLog() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setExpandedMessageId(isExpanded ? null : messageId);
+                          setExpandedMessageIds((prev) => {
+                            const next = new Set(prev);
+                            if (isExpanded) {
+                              next.delete(messageId);
+                            } else {
+                              next.add(messageId);
+                            }
+                            return next;
+                          });
                         }}
                         className="mt-2 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline font-semibold transition-colors"
                       >
@@ -477,6 +674,29 @@ export function ChatLog() {
           </div>
         )}
       </div>
+
+      {/* Image Modal */}
+      {modalImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setModalImage(null)}
+        >
+          <div className="relative max-w-[90vw] max-h-[90vh]">
+            <img
+              src={`data:${modalImage.mediaType};base64,${modalImage.data}`}
+              alt="Full size"
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setModalImage(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-gray-100 transition-colors"
+            >
+              <span className="text-gray-600 text-xl leading-none">&times;</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

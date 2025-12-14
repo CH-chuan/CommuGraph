@@ -286,6 +286,14 @@ export class WorkflowGraphBuilder {
 
       parentNodeIds: [],
       childNodeIds: [],
+
+      // Context compaction fields
+      isContextCompact: msg.isContextCompact,
+      compactSummary: msg.compactSummary,
+      compactMetadata: msg.compactMetadata,
+
+      // Image content from user messages
+      images: msg.images,
     };
   }
 
@@ -319,6 +327,10 @@ export class WorkflowGraphBuilder {
       case WorkflowNodeType.RESULT_FAILURE:
         return 'Failure';
       case WorkflowNodeType.SYSTEM_NOTICE:
+        // Check if this is a context compaction node
+        if (msg.isContextCompact) {
+          return 'Context Compact';
+        }
         return 'System';
       default:
         return 'Node';

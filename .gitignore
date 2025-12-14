@@ -16,6 +16,7 @@ figma_prototype/
 
 # samples
 public/samples/
+public/samples/Users*
 
 # claude code
 .claude
