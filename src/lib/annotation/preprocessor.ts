@@ -51,6 +51,7 @@ interface AssistantTurn {
   model: string;
   isSidechain: boolean;
   agentId?: string;
+  parentUuid: string | null;
 }
 
 interface ToolResultInfo {
@@ -143,8 +144,7 @@ export class AnnotationPreprocessor {
     if (typeof userMsg.content === 'string') {
       const content = userMsg.content;
 
-      // Skip command messages
-      if (content.includes('<command-name>')) return false;
+      // Skip system-generated messages (but NOT <command-name> which are user slash commands)
       if (content.includes('<local-command-')) return false;
       if (content.includes('<bash-notification>')) return false;
 
@@ -162,9 +162,8 @@ export class AnnotationPreprocessor {
       // Skip if only tool results
       if (!hasUserContent) return false;
 
-      // Extract text to check for command messages
+      // Extract text to check for system-generated messages (but NOT <command-name> which are user slash commands)
       const textContent = this.extractTextFromMixedContent(userMsg.content);
-      if (textContent.includes('<command-name>')) return false;
       if (textContent.includes('<local-command-')) return false;
       if (textContent.includes('<bash-notification>')) return false;
 
@@ -291,6 +290,7 @@ export class AnnotationPreprocessor {
           model: assistantMsg.model,
           isSidechain: record.isSidechain,
           agentId: record.agentId,
+          parentUuid: record.parentUuid,
         };
         turns.set(key, turn);
       }
@@ -374,6 +374,97 @@ export class AnnotationPreprocessor {
   }
 
   /**
+   * Sort annotation records by following the uuid → parentUuid chain.
+   * This produces a topological ordering that respects the conversation tree structure.
+   */
+  private topologicalSort(records: AnnotationRecord[]): AnnotationRecord[] {
+    // Build uuid -> record map
+    // IMPORTANT: Register ALL raw_uuids, not just the first one.
+    // This is because grouped assistant turns have multiple uuids,
+    // and children may reference ANY of them as their parent.
+    const byUuid = new Map<string, AnnotationRecord>();
+    for (const record of records) {
+      for (const uuid of record.source.raw_uuids || []) {
+        byUuid.set(uuid, record);
+      }
+    }
+
+    // Build parent -> children adjacency
+    const children = new Map<string | null, AnnotationRecord[]>();
+    for (const record of records) {
+      const parentUuid = record.source.parent_uuid ?? null;
+      const list = children.get(parentUuid) || [];
+      list.push(record);
+      children.set(parentUuid, list);
+    }
+
+    // DFS from roots
+    const result: AnnotationRecord[] = [];
+    const visited = new Set<AnnotationRecord>();
+
+    const dfs = (uuid: string | null) => {
+      const childRecords = children.get(uuid) || [];
+      // Sort children by timestamp as tiebreaker for siblings
+      childRecords.sort((a, b) => {
+        const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return ta - tb;
+      });
+
+      for (const record of childRecords) {
+        if (visited.has(record)) continue;
+        visited.add(record);
+
+        result.push(record);
+        // Traverse children from ALL uuids in this record
+        for (const recordUuid of record.source.raw_uuids || []) {
+          dfs(recordUuid);
+        }
+      }
+    };
+
+    // Start from null parent (root)
+    dfs(null);
+
+    // Handle orphaned records whose parent is not in our set
+    // These become additional roots in the traversal
+    // Sort orphans by timestamp to process them in chronological order
+    const orphans = records.filter(r => {
+      if (visited.has(r)) return false;
+      const parentUuid = r.source.parent_uuid;
+      return parentUuid && !byUuid.has(parentUuid);
+    });
+    orphans.sort((a, b) => {
+      const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return ta - tb;
+    });
+
+    for (const record of orphans) {
+      if (visited.has(record)) continue;
+      // Treat as root and traverse its children
+      visited.add(record);
+      result.push(record);
+      for (const recordUuid of record.source.raw_uuids || []) {
+        dfs(recordUuid);
+      }
+    }
+
+    // Handle any remaining unvisited records (sorted by timestamp)
+    const remaining = records.filter(r => !visited.has(r));
+    remaining.sort((a, b) => {
+      const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return ta - tb;
+    });
+    for (const record of remaining) {
+      result.push(record);
+    }
+
+    return result;
+  }
+
+  /**
    * Generate annotation records from parsed data.
    */
   generateAnnotationRecords(): AnnotationRecord[] {
@@ -402,6 +493,7 @@ export class AnnotationPreprocessor {
           raw_line_range: [lineNumber, lineNumber],
           raw_uuids: [record.uuid],
           is_sidechain: false,
+          parent_uuid: record.parentUuid,
         },
         timestamp: record.timestamp,
         text_or_artifact_ref: {
@@ -429,6 +521,7 @@ export class AnnotationPreprocessor {
         request_id: turn.requestId,
         message_id: turn.messageId,
         is_sidechain: false,
+        parent_uuid: turn.parentUuid,
       };
 
       // Add tool_use_ids if present
@@ -518,6 +611,8 @@ export class AnnotationPreprocessor {
           raw_line_range: [Math.min(...lineNumbers), Math.max(...lineNumbers)],
           raw_uuids: rawUuids,
           is_sidechain: false,
+          // Use logicalParentUuid for context compaction continuity
+          parent_uuid: record.logicalParentUuid ?? record.parentUuid,
         },
         timestamp: record.timestamp,
         text_or_artifact_ref: {
@@ -529,14 +624,8 @@ export class AnnotationPreprocessor {
       });
     }
 
-    // Sort by timestamp
-    output.sort((a, b) => {
-      const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return ta - tb;
-    });
-
-    return output;
+    // Sort by parent-child relationship chain (topological order)
+    return this.topologicalSort(output);
   }
 
   /**

@@ -239,11 +239,22 @@ Sub-agent activity is visible through:
 
 ---
 
+## Record Ordering
+
+Annotation units are ordered using **topological sort** via the parent-child UUID chain, not timestamps.
+
+See **[record_ordering.md](./record_ordering.md)** for the full algorithm covering:
+- Why timestamp sorting is insufficient
+- The topological sort algorithm
+- Handling siblings, orphans, and context compaction
+
+---
+
 ## Key Files Reference
 
 | File | Role |
 |------|------|
-| `src/lib/annotation/preprocessor.ts` | Turn grouping, tool linking, unit generation |
+| `src/lib/annotation/preprocessor.ts` | Turn grouping, tool linking, unit generation, **topological sort** |
 | `src/lib/annotation/types.ts` | AnnotationRecord, AssistantTurn, UserTurn types |
 | `src/lib/parsers/claude-code-parser.ts` | Initial parsing (provides ClaudeCodeMessage[]) |
 | `src/app/api/graph/[id]/annotations/route.ts` | API endpoint returning AnnotationRecord[] |

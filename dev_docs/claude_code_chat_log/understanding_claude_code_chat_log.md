@@ -31,6 +31,16 @@ The order and sequence of chats are connected via `uuid` and `parentUuid`:
 }
 ```
 
+### Record Ordering Algorithm
+
+CommuGraph uses **topological sort** via the parent-child UUID chain (not timestamps) to order records.
+
+See **[record_ordering.md](./record_ordering.md)** for the full algorithm covering:
+- Why timestamp sorting is insufficient
+- Handling siblings (same parent) via timestamp tiebreaker
+- Handling orphans (parent not in set)
+- Context compaction continuity via `logicalParentUuid`
+
 ---
 
 ## Line-Level Types (`type` field at root level)

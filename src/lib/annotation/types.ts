@@ -104,6 +104,8 @@ export interface SourcePointers {
   is_sidechain?: boolean;
   /** Agent ID if from sidechain */
   agent_id?: string;
+  /** Parent UUID for sequencing (parentUuid from raw records) */
+  parent_uuid?: string | null;
 }
 
 // ============================================================================

@@ -210,11 +210,22 @@ Each agent (main + sub-agents) gets its own swimlane in the workflow view.
 
 ---
 
+## Record Ordering
+
+Workflow messages are ordered using **topological sort** via the parent-child UUID chain, not timestamps.
+
+See **[record_ordering.md](./record_ordering.md)** for the full algorithm covering:
+- Why timestamp sorting is insufficient
+- The topological sort algorithm
+- Handling siblings, orphans, and context compaction
+
+---
+
 ## Key Files Reference
 
 | File | Role |
 |------|------|
-| `src/lib/parsers/claude-code-parser.ts` | JSONL parsing, requestId grouping, sub-agent extraction |
+| `src/lib/parsers/claude-code-parser.ts` | JSONL parsing, requestId grouping, sub-agent extraction, **topological sort** |
 | `src/lib/models/types.ts` | Type definitions (WorkflowNodeType, MessageType) |
 | `src/lib/services/workflow-graph-builder.ts` | DAG construction, fork/join patterns, lane generation |
 | `src/app/api/graph/[id]/workflow/route.ts` | API endpoint returning WorkflowGraphSnapshot |

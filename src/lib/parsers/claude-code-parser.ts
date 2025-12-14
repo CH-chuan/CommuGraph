@@ -463,31 +463,51 @@ export class ClaudeCodeParser extends BaseParser {
       }
     }
 
-    // Sort all records by timestamp for step ordering
-    const allProcessableRecords = [
+    // Build processable records with parent info for topological sort
+    type ProcessableRecord = {
+      type: 'merged_response' | 'raw';
+      data: MergedLLMResponse | RawLogRecord;
+      timestamp: string;
+      uuid: string;
+      parentUuid: string | null;
+      logicalParentUuid?: string | null;
+      allUuids: string[]; // All UUIDs that identify this record (for merged responses)
+    };
+
+    const allProcessableRecords: ProcessableRecord[] = [
       ...mergedResponses.map(r => ({
         type: 'merged_response' as const,
         data: r,
         timestamp: r.timestamp,
         uuid: r.uuid,
+        parentUuid: r.parentUuid,
+        logicalParentUuid: r.logicalParentUuid,
+        // Include all tool call UUIDs as they may be referenced by children
+        allUuids: [r.uuid, ...r.toolCalls.map(tc => tc.uuid)],
       })),
       ...otherRecords.map(r => ({
         type: 'raw' as const,
         data: r,
         timestamp: r.timestamp,
         uuid: r.uuid,
+        parentUuid: r.parentUuid,
+        logicalParentUuid: r.logicalParentUuid,
+        allUuids: [r.uuid],
       })),
-    ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    ];
+
+    // Topological sort using uuid→parentUuid chain
+    const sortedRecords = this.topologicalSortRecords(allProcessableRecords);
 
     // Process records in order
-    for (const item of allProcessableRecords) {
+    for (const item of sortedRecords) {
       if (item.type === 'merged_response') {
-        const response = item.data;
+        const response = item.data as MergedLLMResponse;
         const newMessages = this.convertMergedResponse(response, stepIndex);
         messages.push(...newMessages);
         stepIndex += newMessages.length;
       } else {
-        const record = item.data;
+        const record = item.data as RawLogRecord;
         const newMessages = this.convertRawRecord(record, stepIndex, subAgents, taskToolSubagentTypes, compactSummaryMap);
         messages.push(...newMessages);
         stepIndex += newMessages.length;
@@ -848,7 +868,8 @@ export class ClaudeCodeParser extends BaseParser {
     const content = typeof userMsg.content === 'string' ? userMsg.content : '';
     if (content.includes('<local-command-')) return WorkflowNodeType.SYSTEM_NOTICE;
     if (content.includes('<bash-notification>')) return WorkflowNodeType.SYSTEM_NOTICE;
-    if (content.includes('<command-name>')) return WorkflowNodeType.SYSTEM_NOTICE;
+    // Note: <command-name> messages are user-initiated slash commands (e.g., /clear, /savelog)
+    // They should be treated as USER_INPUT, not SYSTEM_NOTICE
 
     // Default: real user input
     return WorkflowNodeType.USER_INPUT;
@@ -951,6 +972,109 @@ export class ClaudeCodeParser extends BaseParser {
       default:
         return `${name}: ${JSON.stringify(input).slice(0, 100)}`;
     }
+  }
+
+  /**
+   * Topological sort records using uuid→parentUuid chain.
+   *
+   * Uses DFS traversal following parent-child relationships.
+   * Siblings are sorted by timestamp as tiebreaker.
+   * Orphans (records whose parent is not in the set) are sorted by timestamp.
+   */
+  private topologicalSortRecords<T extends {
+    uuid: string;
+    parentUuid: string | null;
+    logicalParentUuid?: string | null;
+    allUuids: string[];
+    timestamp: string;
+  }>(records: T[]): T[] {
+    // Build uuid -> record map (register all UUIDs for each record)
+    const byUuid = new Map<string, T>();
+    for (const record of records) {
+      for (const uuid of record.allUuids) {
+        byUuid.set(uuid, record);
+      }
+    }
+
+    // Build parent -> children adjacency list
+    // Use logicalParentUuid for context compaction continuity, fall back to parentUuid
+    const children = new Map<string | null, T[]>();
+    for (const record of records) {
+      const parentUuid = record.logicalParentUuid ?? record.parentUuid ?? null;
+      const list = children.get(parentUuid) || [];
+      list.push(record);
+      children.set(parentUuid, list);
+    }
+
+    // DFS from roots (records with no parent or parent not in our set)
+    const result: T[] = [];
+    const visited = new Set<string>();
+
+    const dfs = (uuid: string | null) => {
+      const childRecords = children.get(uuid) || [];
+
+      // Sort children by timestamp as tiebreaker for siblings
+      childRecords.sort((a, b) => {
+        const ta = new Date(a.timestamp).getTime();
+        const tb = new Date(b.timestamp).getTime();
+        return ta - tb;
+      });
+
+      for (const record of childRecords) {
+        // Check if already visited (via any of its UUIDs)
+        const isVisited = record.allUuids.some(u => visited.has(u));
+        if (isVisited) continue;
+
+        // Mark all UUIDs as visited
+        for (const u of record.allUuids) {
+          visited.add(u);
+        }
+
+        result.push(record);
+
+        // Continue DFS from this record's UUIDs
+        for (const u of record.allUuids) {
+          dfs(u);
+        }
+      }
+    };
+
+    // Start from null parent (root) - records whose parent is null
+    dfs(null);
+
+    // Also process records whose parent exists but is not in our set (orphans)
+    // These are records that reference a parent that was filtered out
+    const orphanRecords: T[] = [];
+    for (const record of records) {
+      const isVisited = record.allUuids.some(u => visited.has(u));
+      if (!isVisited) {
+        orphanRecords.push(record);
+      }
+    }
+
+    // Sort orphans by timestamp and process each as a new root
+    orphanRecords.sort((a, b) => {
+      const ta = new Date(a.timestamp).getTime();
+      const tb = new Date(b.timestamp).getTime();
+      return ta - tb;
+    });
+
+    for (const record of orphanRecords) {
+      const isVisited = record.allUuids.some(u => visited.has(u));
+      if (isVisited) continue;
+
+      for (const u of record.allUuids) {
+        visited.add(u);
+      }
+      result.push(record);
+
+      // Process children of this orphan
+      for (const u of record.allUuids) {
+        dfs(u);
+      }
+    }
+
+    return result;
   }
 
   /**
