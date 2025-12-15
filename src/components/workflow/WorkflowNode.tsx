@@ -127,7 +127,7 @@ const getToolIcon = (toolName?: string) => {
   }
 };
 
-// Node type configurations
+// Node type configurations (darker borders for visibility when zoomed out)
 const nodeTypeConfig: Record<
   string,
   {
@@ -141,51 +141,51 @@ const nodeTypeConfig: Record<
   user_input: {
     icon: <User className="w-4 h-4" />,
     bgColor: 'bg-blue-50',
-    borderColor: 'border-blue-400',
+    borderColor: 'border-blue-500',
     textColor: 'text-blue-700',
   },
   user_input_image: {
     icon: <ImageIcon className="w-4 h-4" />,
     bgColor: 'bg-sky-100',
-    borderColor: 'border-sky-500',
+    borderColor: 'border-sky-600',
     textColor: 'text-sky-700',
   },
   agent_reasoning: {
     icon: <Brain className="w-4 h-4" />,
     bgColor: 'bg-purple-50',
-    borderColor: 'border-purple-400',
+    borderColor: 'border-purple-500',
     textColor: 'text-purple-700',
   },
   tool_call: {
     icon: <Wrench className="w-4 h-4" />,
     bgColor: 'bg-emerald-50',
-    borderColor: 'border-emerald-400',
+    borderColor: 'border-emerald-500',
     textColor: 'text-emerald-700',
   },
   tool_result: {
     icon: <CheckCircle className="w-4 h-4" />,
     bgColor: 'bg-green-50',
-    borderColor: 'border-green-400',
+    borderColor: 'border-green-500',
     textColor: 'text-green-700',
   },
   result_success: {
     icon: <CheckCircle className="w-4 h-4" />,
     bgColor: 'bg-green-50',
-    borderColor: 'border-green-400',
+    borderColor: 'border-green-500',
     textColor: 'text-green-700',
     headerBg: 'bg-green-100',
   },
   result_failure: {
     icon: <XCircle className="w-4 h-4" />,
     bgColor: 'bg-red-50',
-    borderColor: 'border-red-400',
+    borderColor: 'border-red-500',
     textColor: 'text-red-700',
     headerBg: 'bg-red-100',
   },
   system_notice: {
     icon: <Settings className="w-4 h-4" />,
     bgColor: 'bg-slate-50',
-    borderColor: 'border-slate-400',
+    borderColor: 'border-slate-500',
     textColor: 'text-slate-700',
   },
 };
@@ -234,8 +234,8 @@ function SubAgentToolCallComponent({ data, selected }: { data: WorkflowNodeData;
   return (
     <div
       className={`
-        bg-white rounded-lg shadow-md border-2 border-purple-400 min-w-[240px] max-w-[300px]
-        ${selected ? 'ring-2 ring-offset-1 ring-purple-500 shadow-lg' : ''}
+        bg-white rounded-lg shadow-lg border-[3px] border-purple-500 min-w-[240px] max-w-[300px]
+        ${selected ? 'ring-2 ring-offset-1 ring-purple-500 shadow-xl' : ''}
         ${nodeData.isHighlighted ? 'ring-2 ring-offset-1 ring-amber-400' : ''}
       `}
     >
@@ -328,9 +328,9 @@ function ResultNodeComponent({ data, selected }: { data: WorkflowNodeData; selec
   return (
     <div
       className={`
-        bg-white rounded-lg shadow-md border-2 min-w-[200px] max-w-[280px]
+        bg-white rounded-lg shadow-lg border-[3px] min-w-[200px] max-w-[280px]
         ${config.borderColor}
-        ${selected ? 'ring-2 ring-offset-1 ring-blue-400 shadow-lg' : ''}
+        ${selected ? 'ring-2 ring-offset-1 ring-blue-400 shadow-xl' : ''}
         ${nodeData.isHighlighted ? 'ring-2 ring-offset-1 ring-amber-400' : ''}
       `}
     >
@@ -400,7 +400,7 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
     return (
       <div
         className={`
-          bg-white rounded-lg shadow-md border-2 border-slate-400 min-w-[200px] max-w-[280px]
+          bg-white rounded-lg shadow-lg border-[3px] border-slate-500 min-w-[200px] max-w-[280px]
           ${selected ? 'ring-2 ring-offset-1 ring-blue-400 shadow-lg' : ''}
           ${nodeData.isHighlighted ? 'ring-2 ring-offset-1 ring-amber-400' : ''}
         `}
@@ -515,9 +515,9 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
   return (
     <div
       className={`
-        bg-white rounded-lg shadow-md border-2 min-w-[200px] max-w-[280px]
+        bg-white rounded-lg shadow-lg border-[3px] min-w-[200px] max-w-[280px]
         ${config.borderColor}
-        ${selected ? 'ring-2 ring-offset-1 ring-blue-400 shadow-lg' : ''}
+        ${selected ? 'ring-2 ring-offset-1 ring-blue-400 shadow-xl' : ''}
         ${nodeData.isHighlighted ? 'ring-2 ring-offset-1 ring-amber-400' : ''}
       `}
     >

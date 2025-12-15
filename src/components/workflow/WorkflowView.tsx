@@ -358,8 +358,8 @@ export function WorkflowView({ data }: WorkflowViewProps) {
           onNodeClick={onNodeClick}
           onNodeDoubleClick={onNodeDoubleClick}
           fitView
-          fitViewOptions={{ padding: 0.3, minZoom: 0.3 }}
-          minZoom={0.1}
+          fitViewOptions={{ padding: 0.3, minZoom: 0.05 }}
+          minZoom={0.02}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}
           defaultViewport={{ x: 0, y: 0, zoom: 0.7 }}

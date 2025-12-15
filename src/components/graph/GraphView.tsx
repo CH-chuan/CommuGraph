@@ -130,7 +130,7 @@ export function GraphView() {
         fitView
         fitViewOptions={{ padding: 0.2 }}
         attributionPosition="bottom-right"
-        minZoom={0.3}
+        minZoom={0.02}
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
         elevateEdgesOnSelect={true} // Bring selected edges to front
