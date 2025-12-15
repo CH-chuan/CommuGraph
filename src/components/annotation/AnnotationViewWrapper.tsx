@@ -27,7 +27,7 @@ function AnnotationLoadingState() {
     <div className="flex h-full items-center justify-center bg-slate-50">
       <div className="text-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-3" />
-        <p className="text-sm text-slate-600">Loading annotation view...</p>
+        <p className="text-sm text-slate-600">Loading dialog view...</p>
       </div>
     </div>
   );
@@ -303,7 +303,7 @@ export function AnnotationViewWrapper() {
             No data loaded
           </div>
           <div className="text-sm text-slate-500">
-            Upload a Claude Code log to view annotations
+            Upload a Claude Code log to view dialog
           </div>
         </div>
       </div>
@@ -319,7 +319,7 @@ export function AnnotationViewWrapper() {
       <div className="flex h-full items-center justify-center bg-slate-50">
         <div className="text-center">
           <div className="text-lg font-medium text-red-700">
-            Error loading annotations
+            Error loading dialog
           </div>
           <div className="text-sm text-red-500">
             {error?.message || 'An error occurred'}
@@ -334,10 +334,10 @@ export function AnnotationViewWrapper() {
       <div className="flex h-full items-center justify-center bg-slate-50">
         <div className="text-center">
           <div className="text-lg font-medium text-slate-700">
-            No annotation records
+            No dialog records
           </div>
           <div className="text-sm text-slate-500">
-            The preprocessor did not generate any annotation units
+            The preprocessor did not generate any dialog units
           </div>
         </div>
       </div>
@@ -359,7 +359,7 @@ export function AnnotationViewWrapper() {
 
       {/* Right Panel - Stats & Future Label Panel */}
       <div className="w-72 border-l border-slate-200 bg-slate-50 p-4 overflow-auto">
-        <h3 className="font-semibold text-lg mb-4">Annotation Stats</h3>
+        <h3 className="font-semibold text-lg mb-4">Dialog Stats</h3>
 
         <div className="space-y-3">
           <div className="bg-white rounded-lg p-3 shadow-sm">
@@ -470,7 +470,7 @@ export function AnnotationViewWrapper() {
           <h4 className="font-medium text-slate-700 mb-2">Labels</h4>
           <div className="bg-white rounded-lg p-3 shadow-sm">
             <p className="text-sm text-slate-500 italic">
-              Annotation labels will appear here after labeling.
+              Dialog labels will appear here after labeling.
             </p>
           </div>
         </div>

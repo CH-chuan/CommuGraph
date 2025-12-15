@@ -536,14 +536,26 @@ export class AnnotationPreprocessor {
   }
 
   /**
-   * Sort annotation records by following the uuid → parentUuid chain.
-   * This produces a topological ordering that respects the conversation tree structure.
+   * Sort annotation records using Kahn's algorithm with timestamp-based priority.
+   *
+   * This produces an ordering that:
+   * 1. Respects tree structure (parents always before children)
+   * 2. Maximizes chronological order (earlier timestamps first among unrelated records)
+   *
+   * Algorithm:
+   * - Use a priority queue (sorted by timestamp) instead of DFS
+   * - Start with all "ready" records (those whose parents are already processed or don't exist)
+   * - Always pick the ready record with the earliest timestamp
+   * - When a record is processed, its children may become ready
+   *
+   * This is more robust than DFS because it doesn't process entire branches
+   * before considering other branches - it interleaves based on timestamp.
    */
   private topologicalSort(records: AnnotationRecord[]): AnnotationRecord[] {
+    if (records.length === 0) return [];
+
     // Build uuid -> record map
-    // IMPORTANT: Register ALL raw_uuids, not just the first one.
-    // This is because grouped assistant turns have multiple uuids,
-    // and children may reference ANY of them as their parent.
+    // Register ALL raw_uuids since children may reference any of them
     const byUuid = new Map<string, AnnotationRecord>();
     for (const record of records) {
       for (const uuid of record.source.raw_uuids || []) {
@@ -551,76 +563,79 @@ export class AnnotationPreprocessor {
       }
     }
 
-    // Build parent -> children adjacency
-    const children = new Map<string | null, AnnotationRecord[]>();
+    // Build record -> parent record mapping
+    const parentOf = new Map<AnnotationRecord, AnnotationRecord | null>();
     for (const record of records) {
-      const parentUuid = record.source.parent_uuid ?? null;
-      const list = children.get(parentUuid) || [];
-      list.push(record);
-      children.set(parentUuid, list);
+      const parentUuid = record.source.parent_uuid;
+      if (parentUuid && byUuid.has(parentUuid)) {
+        parentOf.set(record, byUuid.get(parentUuid)!);
+      } else {
+        parentOf.set(record, null); // Root or orphan (parent not in our set)
+      }
     }
 
-    // DFS from roots
+    // Track which records have been processed
+    const processed = new Set<AnnotationRecord>();
     const result: AnnotationRecord[] = [];
-    const visited = new Set<AnnotationRecord>();
 
-    const dfs = (uuid: string | null) => {
-      const childRecords = children.get(uuid) || [];
-      // Sort children by timestamp as tiebreaker for siblings
-      childRecords.sort((a, b) => {
-        const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-        const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-        return ta - tb;
-      });
+    // Helper to get timestamp for sorting
+    const getTimestamp = (r: AnnotationRecord): number =>
+      r.timestamp ? new Date(r.timestamp).getTime() : 0;
 
-      for (const record of childRecords) {
-        if (visited.has(record)) continue;
-        visited.add(record);
-
-        result.push(record);
-        // Traverse children from ALL uuids in this record
-        for (const recordUuid of record.source.raw_uuids || []) {
-          dfs(recordUuid);
-        }
-      }
+    // Helper to check if a record is ready (parent processed or no parent)
+    const isReady = (r: AnnotationRecord): boolean => {
+      const parent = parentOf.get(r);
+      return parent === null || parent === undefined || processed.has(parent);
     };
 
-    // Start from null parent (root)
-    dfs(null);
+    // Initialize with all ready records, sorted by timestamp
+    // Use an array as a simple priority queue (re-sort when needed)
+    let readyQueue = records.filter(isReady);
+    readyQueue.sort((a, b) => getTimestamp(a) - getTimestamp(b));
 
-    // Handle orphaned records whose parent is not in our set
-    // These become additional roots in the traversal
-    // Sort orphans by timestamp to process them in chronological order
-    const orphans = records.filter(r => {
-      if (visited.has(r)) return false;
-      const parentUuid = r.source.parent_uuid;
-      return parentUuid && !byUuid.has(parentUuid);
-    });
-    orphans.sort((a, b) => {
-      const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return ta - tb;
-    });
-
-    for (const record of orphans) {
-      if (visited.has(record)) continue;
-      // Treat as root and traverse its children
-      visited.add(record);
-      result.push(record);
-      for (const recordUuid of record.source.raw_uuids || []) {
-        dfs(recordUuid);
+    // Build children map for efficient lookup
+    const childrenOf = new Map<AnnotationRecord, AnnotationRecord[]>();
+    for (const record of records) {
+      const parent = parentOf.get(record);
+      if (parent) {
+        const children = childrenOf.get(parent) || [];
+        children.push(record);
+        childrenOf.set(parent, children);
       }
     }
 
-    // Handle any remaining unvisited records (sorted by timestamp)
-    const remaining = records.filter(r => !visited.has(r));
-    remaining.sort((a, b) => {
-      const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return ta - tb;
-    });
-    for (const record of remaining) {
+    // Process records in timestamp order, respecting dependencies
+    while (readyQueue.length > 0) {
+      // Take the record with earliest timestamp
+      const record = readyQueue.shift()!;
+
+      if (processed.has(record)) continue;
+      processed.add(record);
       result.push(record);
+
+      // Check if any children are now ready
+      const children = childrenOf.get(record) || [];
+      const newlyReady: AnnotationRecord[] = [];
+      for (const child of children) {
+        if (!processed.has(child) && isReady(child)) {
+          newlyReady.push(child);
+        }
+      }
+
+      // Insert newly ready records into queue (maintain sorted order)
+      if (newlyReady.length > 0) {
+        readyQueue.push(...newlyReady);
+        readyQueue.sort((a, b) => getTimestamp(a) - getTimestamp(b));
+      }
+    }
+
+    // Handle any remaining unvisited records (shouldn't happen in well-formed data)
+    // These would be records in cycles or with other issues
+    const remaining = records.filter(r => !processed.has(r));
+    if (remaining.length > 0) {
+      console.warn(`topologicalSort: ${remaining.length} records could not be ordered (possible cycle or data issue)`);
+      remaining.sort((a, b) => getTimestamp(a) - getTimestamp(b));
+      result.push(...remaining);
     }
 
     return result;

@@ -1,10 +1,39 @@
-# Claude Code Annotation View: Unit Grouping Logic
+# Claude Code Dialog View: Unit Grouping Logic
 
-This document explains how CommuGraph groups raw JSONL records from Claude Code sessions into annotation units for the **Annotation View** (labeling interface).
+This document explains how CommuGraph groups raw JSONL records from Claude Code sessions into dialog units for the **Dialog View** (conversation visualization and labeling interface).
+
+---
+
+## Naming Convention: UI vs Code
+
+> **Important**: The UI displays "Dialog View" but internal code still uses "Annotation" naming.
+
+| Layer | Current Name | Notes |
+|-------|--------------|-------|
+| **UI Labels** | Dialog View, Dialog Stats | User-facing text |
+| **Tab Icon** | `MessageSquare` | Chat bubble icon |
+| **ViewMode Type** | `'annotation'` | `src/context/app-context.tsx` |
+| **Components** | `AnnotationView`, `AnnotationNode`, `AnnotationViewWrapper` | `src/components/annotation/` |
+| **Types** | `AnnotationRecord`, `AnnotationNodeData` | `src/lib/annotation/types.ts` |
+| **Preprocessor** | `AnnotationPreprocessor` | `src/lib/annotation/preprocessor.ts` |
+| **API Endpoint** | `/api/graph/[id]/annotations` | Returns dialog records |
+| **Hook** | `useAnnotationData` | `src/hooks/use-annotation-data.ts` |
+
+### Future Full Rename (Not Yet Done)
+
+If a complete rename is desired, these items need updating:
+- `src/components/annotation/` → `src/components/dialog/`
+- `src/lib/annotation/` → `src/lib/dialog/`
+- All `Annotation*` types → `Dialog*`
+- API endpoint `/annotations` → `/dialog`
+- ViewMode type `'annotation'` → `'dialog'`
+- Hook `useAnnotationData` → `useDialogData`
+
+---
 
 ## Overview
 
-The Annotation View transforms parsed messages into **turn-based units** suitable for human labeling tasks. Unlike the Workflow View (which shows a DAG of individual actions), the Annotation View groups content into logical conversation turns.
+The Dialog View transforms parsed messages into **turn-based units** suitable for conversation visualization and human labeling tasks. Unlike the Workflow View (which shows a DAG of individual actions), the Dialog View groups content into logical conversation turns.
 
 ## Data Flow
 
@@ -158,7 +187,7 @@ assistantTurn.tool_summary = {
 
 ## Main Chain Filtering
 
-**Important**: Annotation units only include messages from the **main conversation chain**.
+**Important**: Dialog units only include messages from the **main conversation chain**.
 
 Sub-agent messages are filtered out:
 ```typescript
@@ -189,7 +218,7 @@ Sub-agent activity is visible through:
                     Group by (requestId, messageId)
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                    ANNOTATION UNITS                             │
+│                    DIALOG UNITS                             │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
@@ -217,15 +246,15 @@ Sub-agent activity is visible through:
 
 ---
 
-## Comparison: Workflow View vs Annotation View
+## Comparison: Workflow View vs Dialog View
 
-| Aspect | Workflow View | Annotation View |
-|--------|---------------|-----------------|
+| Aspect | Workflow View | Dialog View |
+|--------|---------------|-------------|
 | Granularity | Individual nodes (THOUGHT, ACTION, OBSERVATION) | Conversation turns |
 | Tool handling | Separate ACTION and OBSERVATION nodes | Merged into `tool_summary` |
 | Structure | DAG with edges | Flat list of units |
 | Sub-agents | Separate lanes | Filtered out (main chain only) |
-| Use case | Process visualization | Human labeling |
+| Use case | Process visualization | Conversation review & labeling |
 
 ---
 
