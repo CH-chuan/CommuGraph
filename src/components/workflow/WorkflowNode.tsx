@@ -451,7 +451,21 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
   const nodeTypeKey = nodeData.nodeType === 'user_input' && hasImages
     ? 'user_input_image'
     : nodeData.nodeType;
-  const config = nodeTypeConfig[nodeTypeKey] || nodeTypeConfig.system_notice;
+
+  // For tool_call, use semantic tool colors (indigo for sub-agent, cyan for web, etc.)
+  let config: { icon: React.ReactNode; bgColor: string; borderColor: string; textColor: string; headerBg?: string };
+  if (nodeData.nodeType === 'tool_call') {
+    const toolColors = getToolColors(nodeData.toolName);
+    config = {
+      icon: nodeTypeConfig.tool_call.icon,
+      bgColor: toolColors.bg,
+      borderColor: toolColors.border,
+      textColor: toolColors.text,
+      headerBg: toolColors.headerBg,
+    };
+  } else {
+    config = nodeTypeConfig[nodeTypeKey] || nodeTypeConfig.system_notice;
+  }
 
   // Use tool-specific icon for tool calls
   const icon =

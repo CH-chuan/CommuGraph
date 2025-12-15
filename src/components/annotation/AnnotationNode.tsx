@@ -263,14 +263,20 @@ function AssistantTurnNode({ data, selected }: { data: AnnotationNodeData; selec
   const hasText = !!text_or_artifact_ref?.text;
   const hasToolCalls = text_or_artifact_ref?.tool_calls && text_or_artifact_ref.tool_calls.length > 0;
 
+  // Check if this turn calls a sub-agent (Task tool) - use indigo (deeper purple)
+  const hasSubAgentCall = text_or_artifact_ref?.tool_calls?.some(
+    tc => tc.tool_name.toLowerCase() === 'task'
+  ) ?? false;
+
   // When expanded (thinking or tool calls), elevate z-index to appear on top
   const isExpanded = showThinking || showToolCalls;
 
   return (
     <div
       className={`
-        bg-white rounded-lg shadow-md border-2 border-purple-400 min-w-[280px] max-w-[450px]
-        ${selected ? 'ring-2 ring-offset-1 ring-purple-500 shadow-lg' : ''}
+        bg-white rounded-lg shadow-md border-2 min-w-[280px] max-w-[450px]
+        ${hasSubAgentCall ? 'border-purple-500' : 'border-purple-400'}
+        ${selected ? `ring-2 ring-offset-1 shadow-lg ${hasSubAgentCall ? 'ring-purple-600' : 'ring-purple-500'}` : ''}
         ${isHighlighted ? 'ring-2 ring-offset-1 ring-amber-400' : ''}
         ${isExpanded ? 'shadow-xl' : ''}
       `}
@@ -281,32 +287,32 @@ function AssistantTurnNode({ data, selected }: { data: AnnotationNodeData; selec
         type="target"
         position={Position.Top}
         id="top"
-        className="!bg-purple-500 !w-3 !h-3 !border-2 !border-white"
+        className={`!w-3 !h-3 !border-2 !border-white ${hasSubAgentCall ? '!bg-purple-600' : '!bg-purple-500'}`}
       />
       <Handle
         type="source"
         position={Position.Bottom}
         id="bottom"
-        className="!bg-purple-500 !w-3 !h-3 !border-2 !border-white"
+        className={`!w-3 !h-3 !border-2 !border-white ${hasSubAgentCall ? '!bg-purple-600' : '!bg-purple-500'}`}
       />
       {/* Horizontal edges (left/right) for consecutive assistant turns */}
       <Handle
         type="target"
         position={Position.Left}
         id="left"
-        className="!bg-purple-400 !w-2.5 !h-2.5 !border-2 !border-white"
+        className={`!w-2.5 !h-2.5 !border-2 !border-white ${hasSubAgentCall ? '!bg-purple-500' : '!bg-purple-400'}`}
       />
       <Handle
         type="source"
         position={Position.Right}
         id="right"
-        className="!bg-purple-400 !w-2.5 !h-2.5 !border-2 !border-white"
+        className={`!w-2.5 !h-2.5 !border-2 !border-white ${hasSubAgentCall ? '!bg-purple-500' : '!bg-purple-400'}`}
       />
 
       {/* Header - includes tool names if present */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-purple-100 rounded-t-md">
-        <Brain className="w-4 h-4 text-purple-600 flex-shrink-0" />
-        <span className="text-sm font-semibold text-purple-700 truncate">
+      <div className={`flex items-center gap-2 px-3 py-2 rounded-t-md ${hasSubAgentCall ? 'bg-purple-200' : 'bg-purple-100'}`}>
+        <Brain className={`w-4 h-4 flex-shrink-0 ${hasSubAgentCall ? 'text-purple-700' : 'text-purple-600'}`} />
+        <span className={`text-sm font-semibold truncate ${hasSubAgentCall ? 'text-purple-800' : 'text-purple-700'}`}>
           {hasToolCalls
             ? `Assistant Turn - ${text_or_artifact_ref.tool_calls!.map(tc => tc.tool_name).join(', ')}`
             : 'Assistant Turn'}

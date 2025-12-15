@@ -15,6 +15,7 @@ import { useWorkflowData } from '@/hooks/use-workflow-data';
 import { useAnnotationData } from '@/hooks/use-annotation-data';
 import { getAgentColor } from '@/utils/graph-adapters';
 import { formatSubAgentName, extractAgentIdFromLaneId } from '@/utils/agent-naming';
+import { getToolColors } from '@/utils/tool-colors';
 import { MessageSquare, ArrowRight, ChevronDown, ChevronUp, Eye, EyeOff, Settings } from 'lucide-react';
 import type { WorkflowNodeType } from '@/lib/models/types';
 
@@ -27,6 +28,8 @@ interface ChatMessage {
   timestamp?: string;
   nodeType?: WorkflowNodeType; // For Claude Code messages
   laneId?: string; // For Claude Code - 'main' or 'agent-{id}'
+  // Tool name for tool_call messages (used for semantic coloring)
+  toolName?: string;
   // Tool call arguments (for tool_call messages)
   toolInput?: Record<string, unknown>;
   // Context compaction fields
@@ -298,6 +301,7 @@ export function ChatLog() {
           timestamp: node.timestamp,
           nodeType: node.nodeType, // For color matching with graph nodes
           laneId: node.laneId, // For determining if main agent or sub-agent
+          toolName: node.toolName, // For semantic tool coloring
           // Context compaction fields
           isContextCompact: node.isContextCompact,
           compactSummary: node.compactSummary,
@@ -477,7 +481,19 @@ export function ChatLog() {
               const nodeTypeKey = msg.nodeType === 'user_input' && hasImages
                 ? 'user_input_image'
                 : msg.nodeType;
-              const typeColors = nodeTypeKey ? nodeTypeColors[nodeTypeKey] : null;
+
+              // For tool_call, use semantic tool colors (indigo for sub-agent, cyan for web, etc.)
+              let typeColors: { bg: string; border: string; text: string } | null = null;
+              if (msg.nodeType === 'tool_call' && msg.toolName) {
+                const toolColors = getToolColors(msg.toolName);
+                typeColors = {
+                  bg: toolColors.bg,
+                  border: toolColors.border,
+                  text: toolColors.text,
+                };
+              } else {
+                typeColors = nodeTypeKey ? nodeTypeColors[nodeTypeKey] : null;
+              }
 
               // Fallback to agent-based colors for non-Claude Code
               const senderColor = agentColors.get(msg.sender) || '#64748b';
