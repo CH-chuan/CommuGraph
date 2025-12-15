@@ -14,6 +14,8 @@ import dynamic from 'next/dynamic';
 import { useAnnotationData } from '@/hooks/use-annotation-data';
 import { useAppContext } from '@/context/app-context';
 import { useWorkflowData } from '@/hooks/use-workflow-data';
+import { formatDuration } from '@/utils/format';
+import { CollapsibleSection } from '@/components/ui/CollapsibleSection';
 
 const AnnotationView = dynamic(
   () => import('./AnnotationView').then((mod) => ({ default: mod.AnnotationView })),
@@ -124,6 +126,71 @@ export function AnnotationViewWrapper() {
 
     return { annotationToStepMap: aToS, stepToAnnotationMap: sToA };
   }, [data, workflowData]);
+
+  // Compute user wait time stats from annotations
+  const waitTimeStats = useMemo(() => {
+    if (!data?.annotations) {
+      return null;
+    }
+
+    // Get user turns sorted by timestamp
+    const userTurns = data.annotations
+      .map((record, index) => ({
+        index,
+        timestamp: record.timestamp ? new Date(record.timestamp).getTime() : 0,
+      }))
+      .filter((r) => {
+        const record = data.annotations[r.index];
+        return record.unit_type === 'user_turn' && r.timestamp > 0;
+      })
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    if (userTurns.length < 2) {
+      return null; // Need at least 2 user turns to compute wait time
+    }
+
+    // Calculate intervals between consecutive user turns
+    const intervals: { ms: number; endAnnotationIndex: number }[] = [];
+    for (let i = 1; i < userTurns.length; i++) {
+      const intervalMs = userTurns[i].timestamp - userTurns[i - 1].timestamp;
+      if (intervalMs > 0) {
+        intervals.push({
+          ms: intervalMs,
+          endAnnotationIndex: userTurns[i].index,
+        });
+      }
+    }
+
+    if (intervals.length === 0) {
+      return null;
+    }
+
+    // Calculate stats
+    const sortedByMs = [...intervals].sort((a, b) => a.ms - b.ms);
+    const min = sortedByMs[0];
+    const max = sortedByMs[sortedByMs.length - 1];
+    const total = intervals.reduce((sum, i) => sum + i.ms, 0);
+    const avg = total / intervals.length;
+
+    return {
+      min: min.ms,
+      max: max.ms,
+      maxAnnotationIndex: max.endAnnotationIndex,
+      avg,
+      total,
+      intervalCount: intervals.length,
+    };
+  }, [data]);
+
+  // Handle jump to max wait time annotation
+  const handleJumpToMaxWait = useCallback(() => {
+    if (!waitTimeStats) return;
+
+    const stepIndex = annotationToStepMap.get(waitTimeStats.maxAnnotationIndex);
+    if (stepIndex !== undefined) {
+      setFocusStepIndex(stepIndex);
+    }
+  }, [waitTimeStats, annotationToStepMap, setFocusStepIndex]);
 
   // Convert highlighted step index to annotation index
   const highlightedAnnotationIndex = useMemo(() => {
@@ -237,6 +304,56 @@ export function AnnotationViewWrapper() {
             <div className="text-sm text-slate-500">System Turns</div>
           </div>
         </div>
+
+        {/* User Prompt Intervals */}
+        {waitTimeStats && (
+          <div className="mt-6">
+            <CollapsibleSection title="User Prompt Intervals" defaultOpen={true}>
+              <div className="space-y-2">
+                {/* Min */}
+                <div className="flex items-center justify-between px-2 py-1.5 rounded">
+                  <span className="text-sm text-slate-600">Min</span>
+                  <span className="text-sm font-medium text-slate-700">
+                    {formatDuration(waitTimeStats.min)}
+                  </span>
+                </div>
+
+                {/* Max - Clickable */}
+                <div className="flex items-center justify-between px-2 py-1.5 rounded">
+                  <span className="text-sm text-slate-600">Max</span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-slate-700">
+                      {formatDuration(waitTimeStats.max)}
+                    </span>
+                    <button
+                      onClick={handleJumpToMaxWait}
+                      className="px-2 py-0.5 text-xs font-medium text-blue-600 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
+                    >
+                      Go
+                    </button>
+                  </span>
+                </div>
+
+                {/* Avg */}
+                <div className="flex items-center justify-between px-2 py-1.5 rounded">
+                  <span className="text-sm text-slate-600">Avg</span>
+                  <span className="text-sm font-medium text-slate-700">
+                    {formatDuration(waitTimeStats.avg)}
+                  </span>
+                </div>
+
+                {/* Divider */}
+                <div className="border-t border-slate-200 my-2" />
+
+                {/* Summary */}
+                <div className="flex items-center justify-between px-2 text-xs text-slate-500">
+                  <span>Total: {formatDuration(waitTimeStats.total)}</span>
+                  <span>{waitTimeStats.intervalCount} intervals</span>
+                </div>
+              </div>
+            </CollapsibleSection>
+          </div>
+        )}
 
         <div className="mt-6">
           <h4 className="font-medium text-slate-700 mb-2">Labels</h4>
