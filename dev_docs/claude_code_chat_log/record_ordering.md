@@ -1,10 +1,26 @@
-# Record Ordering: Topological Sort via Parent-Child UUID Chain
+# Record Ordering: Kahn's Algorithm with Timestamp Priority
 
-This document explains how CommuGraph orders records from Claude Code sessions. The ordering algorithm is **shared across all views** (Workflow View, Annotation View, Chat Log) to ensure consistent sequencing.
+This document explains how CommuGraph orders records from Claude Code sessions. The ordering algorithm ensures **consistent sequencing across all views** (Workflow View, Annotation View, Chat Log).
 
-## Why Not Timestamp Sorting?
+---
 
-Claude Code is asynchronous. Multiple records can have the **same timestamp** but belong to different parts of the conversation tree. Timestamp sorting produces incorrect ordering in these cases:
+## TL;DR: The Three-Phase Pipeline
+
+CommuGraph processes Claude Code logs through three phases:
+
+| Phase | Purpose | Method |
+|-------|---------|--------|
+| **1. Deduplication** | Remove duplicate content from logging bugs | Signature matching + timestamp grouping |
+| **2. Branch Resolution** | Prune phantom branches | BFS from phantom roots |
+| **3. Final Ordering** | Produce chronological + tree-respecting order | Kahn's algorithm with timestamp priority |
+
+---
+
+## Why This Approach?
+
+### Problem 1: Pure Timestamp Sort Fails
+
+Claude Code is asynchronous. Multiple records can have the **same timestamp** but belong to different parts of the conversation tree:
 
 ```
 Problem: Two records at 2025-12-09T20:46:53.669Z
@@ -12,8 +28,29 @@ Problem: Two records at 2025-12-09T20:46:53.669Z
 - Record B: Line 1048, part of conversation branch 2
 
 Timestamp sort: [A, B] adjacent (WRONG - they're unrelated)
-Topological sort: [A, ...many records..., B] separated by tree structure (CORRECT)
 ```
+
+### Problem 2: Pure DFS Fails (The Original Bug)
+
+DFS processes entire branches before siblings, causing **chronologically incorrect ordering**:
+
+```
+Problem: User message at 07:56 is child of assistant at 06:51
+         Another assistant at 07:46 is on a different branch
+
+DFS order: [06:51 assistant, 07:56 user, ...then... 07:46 assistant]
+                            ^^^^^^^^                 ^^^^^^^^
+                            LATER timestamp          EARLIER timestamp
+                            appears FIRST!           appears LATER!
+```
+
+### Solution: Kahn's Algorithm with Timestamp Priority
+
+Combines the best of both approaches:
+- **Respects tree structure**: Parents always before children
+- **Maximizes chronological order**: Among unrelated records, earlier timestamps first
+
+---
 
 ## The Parent-Child UUID Chain
 
@@ -36,143 +73,167 @@ Root (parentUuid: null)
     └── ...
 ```
 
-## Topological Sort Algorithm
+---
 
-### Overview
+## Phase 3: Final Ordering (Kahn's Algorithm)
+
+### Algorithm Overview
 
 ```
 1. Build uuid → record map (for all UUIDs)
-2. Build parent → children adjacency map
-3. DFS from roots, processing children in timestamp order
-4. Handle orphans (records whose parent is not in set)
+2. Build record → parent mapping
+3. Initialize priority queue with "ready" records (no parent or parent already processed)
+4. While queue not empty:
+   a. Pop record with earliest timestamp
+   b. Add to result
+   c. Mark children as ready (if their parent is now processed)
+   d. Add newly ready children to queue
+5. Handle remaining records (cycles or data issues)
 ```
 
-### Step 1: Build UUID Map
+### Why Kahn's Algorithm?
 
-For merged responses (grouped assistant records), register **all** UUIDs:
-- Main record UUID
-- All tool call UUIDs (children may reference these)
+| Approach | Tree Constraint | Chronological Order | Multiple Branches |
+|----------|-----------------|---------------------|-------------------|
+| Pure Timestamp | ❌ Violates | ✅ Perfect | ✅ Interleaved |
+| Pure DFS | ✅ Respects | ❌ Violates | ❌ Sequential |
+| **Kahn's + Priority** | ✅ Respects | ✅ Optimal | ✅ Interleaved |
 
-```typescript
-const byUuid = new Map<string, Record>();
-for (const record of records) {
-  for (const uuid of record.allUuids) {
-    byUuid.set(uuid, record);
-  }
-}
-```
-
-### Step 2: Build Children Adjacency
-
-Group records by their effective parent UUID:
+### Implementation
 
 ```typescript
-const children = new Map<string | null, Record[]>();
-for (const record of records) {
-  // Use logicalParentUuid for context compaction continuity
-  const parentUuid = record.logicalParentUuid ?? record.parentUuid ?? null;
-  children.get(parentUuid)?.push(record) || children.set(parentUuid, [record]);
-}
-```
-
-### Step 3: DFS with Timestamp Tiebreaker
-
-Process children in timestamp order (for siblings):
-
-```typescript
-function dfs(uuid: string | null) {
-  const childRecords = children.get(uuid) || [];
-
-  // SIBLINGS: Sort by timestamp as tiebreaker
-  childRecords.sort((a, b) =>
-    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-  );
-
-  for (const record of childRecords) {
-    if (visited.has(record)) continue;
-    visited.add(record);
-
-    result.push(record);
-
-    // Continue DFS from this record's UUIDs
-    for (const uuid of record.allUuids) {
-      dfs(uuid);
+private topologicalSort(records: AnnotationRecord[]): AnnotationRecord[] {
+  // Step 1: Build uuid → record map (register ALL UUIDs for merged records)
+  const byUuid = new Map<string, AnnotationRecord>();
+  for (const record of records) {
+    for (const uuid of record.source.raw_uuids || []) {
+      byUuid.set(uuid, record);
     }
   }
-}
 
-// Start from null parent (roots)
-dfs(null);
-```
-
-### Step 4: Handle Orphans
-
-Records whose `parentUuid` references a UUID not in our processable set:
-
-```typescript
-// Find unvisited records (orphans)
-const orphans = records.filter(r => !visited.has(r));
-
-// ORPHANS: Sort by timestamp
-orphans.sort((a, b) =>
-  new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-);
-
-// Process each orphan as a new root
-for (const orphan of orphans) {
-  if (visited.has(orphan)) continue;
-  visited.add(orphan);
-  result.push(orphan);
-
-  // Process orphan's children
-  for (const uuid of orphan.allUuids) {
-    dfs(uuid);
+  // Step 2: Build record → parent mapping
+  const parentOf = new Map<AnnotationRecord, AnnotationRecord | null>();
+  for (const record of records) {
+    const parentUuid = record.source.parent_uuid;
+    if (parentUuid && byUuid.has(parentUuid)) {
+      parentOf.set(record, byUuid.get(parentUuid)!);
+    } else {
+      parentOf.set(record, null); // Root or orphan
+    }
   }
+
+  // Step 3: Track processed records
+  const processed = new Set<AnnotationRecord>();
+  const result: AnnotationRecord[] = [];
+
+  // Helper: Get timestamp for sorting
+  const getTimestamp = (r: AnnotationRecord): number =>
+    r.timestamp ? new Date(r.timestamp).getTime() : 0;
+
+  // Helper: Check if record is ready (parent processed or no parent)
+  const isReady = (r: AnnotationRecord): boolean => {
+    const parent = parentOf.get(r);
+    return parent === null || parent === undefined || processed.has(parent);
+  };
+
+  // Step 4: Initialize priority queue with ready records
+  let readyQueue = records.filter(isReady);
+  readyQueue.sort((a, b) => getTimestamp(a) - getTimestamp(b));
+
+  // Build children map for efficient lookup
+  const childrenOf = new Map<AnnotationRecord, AnnotationRecord[]>();
+  for (const record of records) {
+    const parent = parentOf.get(record);
+    if (parent) {
+      const children = childrenOf.get(parent) || [];
+      children.push(record);
+      childrenOf.set(parent, children);
+    }
+  }
+
+  // Step 5: Process in timestamp order, respecting dependencies
+  while (readyQueue.length > 0) {
+    const record = readyQueue.shift()!; // Earliest timestamp
+
+    if (processed.has(record)) continue;
+    processed.add(record);
+    result.push(record);
+
+    // Check if any children are now ready
+    const children = childrenOf.get(record) || [];
+    const newlyReady = children.filter(c => !processed.has(c) && isReady(c));
+
+    if (newlyReady.length > 0) {
+      readyQueue.push(...newlyReady);
+      readyQueue.sort((a, b) => getTimestamp(a) - getTimestamp(b));
+    }
+  }
+
+  // Step 6: Handle remaining (shouldn't happen in well-formed data)
+  const remaining = records.filter(r => !processed.has(r));
+  if (remaining.length > 0) {
+    console.warn(`${remaining.length} records could not be ordered`);
+    remaining.sort((a, b) => getTimestamp(a) - getTimestamp(b));
+    result.push(...remaining);
+  }
+
+  return result;
 }
 ```
+
+### Visual Example
+
+```
+Input Records (by timestamp):
+  06:51 Assistant A (root)
+  07:45 User B (root)
+  07:46 Assistant C (parent: B)
+  07:56 User D (parent: A)
+
+Tree Structure:
+  A (06:51)          B (07:45)
+    └── D (07:56)      └── C (07:46)
+
+DFS Order (WRONG):
+  [A, D, B, C]  ← D at 07:56 before C at 07:46!
+
+Kahn's Order (CORRECT):
+  [A, B, C, D]  ← Chronological while respecting parents
+
+  Step-by-step:
+  1. Ready: [A, B] → Pick A (06:51), D becomes ready
+  2. Ready: [B, D] → Pick B (07:45), C becomes ready
+  3. Ready: [C, D] → Pick C (07:46)
+  4. Ready: [D]    → Pick D (07:56)
+```
+
+---
 
 ## Handling Specific Cases
 
-### 1. Siblings (Children with Same Parent)
+### 1. Multiple Branches with Interleaved Timestamps
 
-**Scenario:** Multiple records share the same `parentUuid`
+**Scenario:** Two branches with timestamps that interleave
 
 ```
-Parent A
-├── Child B (timestamp: 10:00:01)
-├── Child C (timestamp: 10:00:02)
-└── Child D (timestamp: 10:00:03)
+Branch 1: A (06:00) → B (06:30) → C (07:00)
+Branch 2: X (06:15) → Y (06:45)
 ```
 
-**Handling:** Sort siblings by timestamp, then process depth-first.
+**Kahn's Result:** `[A, X, B, Y, C]` - chronological order preserved!
 
-**Result order:** `[A, B, B's children..., C, C's children..., D, D's children...]`
+**DFS Result:** `[A, B, C, X, Y]` - Branch 1 completed before Branch 2 starts ❌
 
-### 2. Orphans
+### 2. Orphans (Parent Not in Set)
 
-**Scenario:** Record's `parentUuid` points to a UUID not in our set
+**Scenario:** Record's `parentUuid` references a UUID not in our processable set
 
 **Why orphans exist:**
 - Parent was filtered out (e.g., `file-history-snapshot`, `queue-operation`)
 - Parent is in a sub-agent file not loaded
 - First record in session (may reference previous session)
 
-**Handling:**
-1. After main DFS, find all unvisited records
-2. Sort orphans by timestamp
-3. Process each orphan as a new "root" and DFS its children
-
-**Example:**
-```
-Main Tree (parentUuid chain intact):
-  Root1 → Child1 → Child2
-
-Orphan Tree (parentUuid not found):
-  Orphan1 → OrphanChild1
-  Orphan2 → OrphanChild2
-
-Result: [Root1, Child1, Child2, Orphan1, OrphanChild1, Orphan2, OrphanChild2]
-```
+**Handling:** Treated as roots (parent = null), sorted into queue by timestamp.
 
 ### 3. Context Compaction (logicalParentUuid)
 
@@ -183,11 +244,7 @@ When context is compacted:
 2. It has `parentUuid: null` (appears as new root)
 3. It has `logicalParentUuid` pointing to the last record before compaction
 
-**Handling:** Use `logicalParentUuid ?? parentUuid` to maintain conversation continuity:
-
-```typescript
-const effectiveParent = record.logicalParentUuid ?? record.parentUuid;
-```
+**Handling:** Use `logicalParentUuid ?? parentUuid` to maintain conversation continuity.
 
 ### 4. Merged Responses (Grouped Assistant Records)
 
@@ -200,8 +257,36 @@ A merged response contains:
 **Handling:** Register all UUIDs in the map so children can reference any of them:
 
 ```typescript
-allUuids: [response.uuid, ...response.toolCalls.map(tc => tc.uuid)]
+raw_uuids: [response.uuid, ...response.toolCalls.map(tc => tc.uuid)]
 ```
+
+---
+
+## Why This Approach is Robust
+
+### Guarantees
+
+1. **Topological Correctness**: Parents always appear before children (enforced by `isReady` check)
+2. **Optimal Chronology**: Among records with no dependency relationship, earlier timestamps always come first
+3. **Deterministic**: Same input always produces same output (no randomness)
+4. **Complete**: All records are processed (remaining records handled at end)
+
+### Edge Cases Handled
+
+| Edge Case | How It's Handled |
+|-----------|------------------|
+| Same timestamp, different branches | Both become ready simultaneously, processed in stable order |
+| Orphan records | Treated as roots, sorted by timestamp |
+| Cycles in data | Detected and appended at end with warning |
+| Empty input | Returns empty array immediately |
+| Single record | Returns that record |
+| All records are roots | Pure timestamp sort (optimal) |
+| Linear chain (no branches) | Pure parent-child order (optimal) |
+
+### Complexity
+
+- **Time**: O(n log n) - dominated by priority queue operations
+- **Space**: O(n) - maps and queue store all records
 
 ## Pre-Processing: Phantom Branch Pruning
 
@@ -428,16 +513,20 @@ Branch pruning runs **before** topological sorting. Assistant deduplication runs
 
 ## Topological Sort Implementation Locations
 
-| Component | File | Method |
-|-----------|------|--------|
-| Workflow/ChatLog | `src/lib/parsers/claude-code-parser.ts` | `topologicalSortRecords()` |
-| Annotation View | `src/lib/annotation/preprocessor.ts` | `topologicalSort()` |
+| Component | File | Method | Algorithm |
+|-----------|------|--------|-----------|
+| Workflow/ChatLog | `src/lib/parsers/claude-code-parser.ts` | `topologicalSortRecords()` | DFS (legacy) |
+| Annotation View | `src/lib/annotation/preprocessor.ts` | `topologicalSort()` | **Kahn's + Priority Queue** |
 
-Both implementations follow the same algorithm to ensure consistent ordering across all views.
+> **Note**: The Annotation View uses the improved Kahn's algorithm. The Workflow/ChatLog implementation should be updated to match for full consistency.
+
+---
 
 ## Verification
 
-To verify ordering is correct, check that no child appears before its parent:
+To verify ordering is correct, check that:
+1. No child appears before its parent (topological correctness)
+2. Records are as chronological as possible (optimal ordering)
 
 ```typescript
 const uuidToIndex = new Map(records.map((r, i) => [r.uuid, i]));
@@ -451,4 +540,50 @@ for (const record of records) {
     }
   }
 }
+```
+
+---
+
+## Summary: The Complete Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        RAW JSONL RECORDS                            │
+│  (may contain duplicates, phantom branches, out-of-order records)   │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              PHASE 1: DEDUPLICATION (Signature Matching)            │
+│                                                                     │
+│  • Assistant records: dedupe by thinking signature                  │
+│  • Removes exact duplicate content from logging bugs                │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│           PHASE 2: BRANCH RESOLUTION (Phantom Pruning)              │
+│                                                                     │
+│  • Group user INPUT records by timestamp                            │
+│  • Keep richest record (most content blocks) as "main"              │
+│  • Mark others as phantom roots (unless different text)             │
+│  • BFS to collect all descendants of phantom roots                  │
+│  • Filter out all phantom branch records                            │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│           PHASE 3: FINAL ORDERING (Kahn's Algorithm)                │
+│                                                                     │
+│  • Build parent → children relationships                            │
+│  • Initialize priority queue with "ready" records (roots/orphans)   │
+│  • Loop: pop earliest timestamp, add to result, mark children ready │
+│  • Result: chronological order + parent-before-child guarantee      │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      ORDERED ANNOTATION RECORDS                     │
+│  (clean, deduplicated, chronologically optimal, tree-respecting)    │
+└─────────────────────────────────────────────────────────────────────┘
 ```

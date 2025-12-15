@@ -504,10 +504,10 @@ export function AnnotationView({
       <div className="flex h-full items-center justify-center bg-slate-50">
         <div className="text-center">
           <div className="text-lg font-medium text-slate-700">
-            No annotation records
+            No dialog records
           </div>
           <div className="text-sm text-slate-500">
-            Upload a Claude Code log to see annotation units
+            Upload a Claude Code log to see dialog units
           </div>
         </div>
       </div>

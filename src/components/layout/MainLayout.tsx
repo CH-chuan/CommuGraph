@@ -18,7 +18,7 @@ import { WorkflowViewWrapper, WorkflowTimelineControls } from '@/components/work
 import { AnnotationViewWrapper } from '@/components/annotation';
 import { AutoGenMetricsPanel } from '@/components/insights/AutoGenMetricsPanel';
 import { useAppContext } from '@/context/app-context';
-import { GitBranch, Tag, GripVertical } from 'lucide-react';
+import { GitBranch, MessageSquare, GripVertical } from 'lucide-react';
 
 /**
  * Resize Handle Component
@@ -49,8 +49,8 @@ function ViewModeTabs() {
           }
         `}
       >
-        <Tag className="w-4 h-4" />
-        Annotation
+        <MessageSquare className="w-4 h-4" />
+        Dialog
       </button>
       <button
         onClick={() => setViewMode('workflow')}
