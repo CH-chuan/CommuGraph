@@ -69,13 +69,13 @@ function AgentNodeComponent({ data, selected }: NodeProps) {
   return (
     <div
       className={`
-        relative bg-white rounded-lg shadow-md border-2 transition-all duration-200
+        relative bg-white rounded-lg shadow-lg border-[3px] transition-all duration-200
         min-w-[160px] max-w-[200px]
-        ${selected ? 'shadow-lg' : ''}
+        ${selected ? 'shadow-xl' : ''}
         ${nodeData.isHighlighted ? 'ring-2 ring-offset-2' : ''}
       `}
       style={{
-        borderColor: selected ? agentColor : '#e2e8f0',
+        borderColor: selected ? agentColor : '#94a3b8', // slate-400 for better visibility when zoomed out
         ...(nodeData.isHighlighted && { ringColor: agentColor }),
       }}
     >

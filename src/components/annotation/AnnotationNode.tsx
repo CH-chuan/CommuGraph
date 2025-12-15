@@ -73,9 +73,9 @@ function UserTurnNode({ data, selected }: { data: AnnotationNodeData; selected?:
   return (
     <div
       className={`
-        bg-white rounded-lg shadow-md border-2 min-w-[280px] max-w-[400px]
-        ${hasImages ? 'border-sky-500' : 'border-blue-400'}
-        ${selected ? `ring-2 ring-offset-1 shadow-lg ${hasImages ? 'ring-sky-500' : 'ring-blue-500'}` : ''}
+        bg-white rounded-lg shadow-lg border-[3px] min-w-[280px] max-w-[400px]
+        ${hasImages ? 'border-sky-600' : 'border-blue-500'}
+        ${selected ? `ring-2 ring-offset-1 shadow-xl ${hasImages ? 'ring-sky-500' : 'ring-blue-500'}` : ''}
         ${isHighlighted ? 'ring-2 ring-offset-1 ring-amber-400' : ''}
       `}
     >
@@ -171,8 +171,8 @@ function SystemTurnNode({ data, selected }: { data: AnnotationNodeData; selected
   return (
     <div
       className={`
-        bg-white rounded-lg shadow-md border-2 border-slate-400 min-w-[280px] max-w-[400px]
-        ${selected ? 'ring-2 ring-offset-1 ring-slate-500 shadow-lg' : ''}
+        bg-white rounded-lg shadow-lg border-[3px] border-slate-500 min-w-[280px] max-w-[400px]
+        ${selected ? 'ring-2 ring-offset-1 ring-slate-500 shadow-xl' : ''}
         ${isHighlighted ? 'ring-2 ring-offset-1 ring-amber-400' : ''}
       `}
     >
@@ -277,11 +277,11 @@ function AssistantTurnNode({ data, selected }: { data: AnnotationNodeData; selec
   // When expanded (thinking or tool calls), elevate z-index to appear on top
   const isExpanded = showThinking || showToolCalls;
 
-  // Accent-based styling
+  // Accent-based styling (thicker borders for visibility when zoomed out)
   const accentStyles = {
     sub_agent: {
       bg: 'bg-purple-50',
-      border: 'border-purple-500 border-l-[6px] border-l-purple-600',
+      border: 'border-[3px] border-purple-600 border-l-[6px] border-l-purple-700',
       ring: 'ring-purple-600',
       handle: '!bg-purple-600',
       handleSide: '!bg-purple-500',
@@ -291,7 +291,7 @@ function AssistantTurnNode({ data, selected }: { data: AnnotationNodeData; selec
     },
     web: {
       bg: 'bg-cyan-50',
-      border: 'border-cyan-500 border-l-[6px] border-l-cyan-600',
+      border: 'border-[3px] border-cyan-600 border-l-[6px] border-l-cyan-700',
       ring: 'ring-cyan-600',
       handle: '!bg-cyan-600',
       handleSide: '!bg-cyan-500',
@@ -301,7 +301,7 @@ function AssistantTurnNode({ data, selected }: { data: AnnotationNodeData; selec
     },
     default: {
       bg: 'bg-white',
-      border: 'border-purple-400',
+      border: 'border-[3px] border-purple-500',
       ring: 'ring-purple-500',
       handle: '!bg-purple-500',
       handleSide: '!bg-purple-400',
@@ -315,9 +315,9 @@ function AssistantTurnNode({ data, selected }: { data: AnnotationNodeData; selec
   return (
     <div
       className={`
-        rounded-lg shadow-md border-2 min-w-[280px] max-w-[450px]
+        rounded-lg shadow-lg min-w-[280px] max-w-[450px]
         ${styles.bg} ${styles.border}
-        ${selected ? `ring-2 ring-offset-1 shadow-lg ${styles.ring}` : ''}
+        ${selected ? `ring-2 ring-offset-1 shadow-xl ${styles.ring}` : ''}
         ${isHighlighted ? 'ring-2 ring-offset-1 ring-amber-400' : ''}
         ${isExpanded ? 'shadow-xl' : ''}
       `}
