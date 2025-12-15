@@ -260,11 +260,14 @@ Claude Code has a logging bug where user messages (especially with images) creat
 
 1. **User record pruning** (`prunePhantomBranches`): Groups user records by timestamp, keeps the "richest" record (most content blocks), prunes others and their descendants via BFS.
 
-2. **Assistant record deduplication** (`mergeAssistantRecords`): When merging chunked assistant records by `requestId`, deduplicates by `messageId` (Claude API message ID) to prevent duplicate thinking/text/tool_use content from phantom branches.
+2. **Assistant record deduplication** (`mergeAssistantRecords`): When merging chunked assistant records by `requestId`, deduplicates by **content** (not by messageId, since Claude Code logs each content type in separate records with the same messageId).
 
 Key implementation in `src/lib/parsers/claude-code-parser.ts`:
-- `processedMessageIds` Set tracks which messageIds have been processed
-- `seenToolUseIds` Set provides additional safety for tool_use deduplication
+- `seenThinkingSignatures` Set deduplicates thinking content by signature or prefix
+- `seenTextContent` Set deduplicates text content by prefix
+- `seenToolUseIds` Set deduplicates tool_use content by tool_use_id
+
+**Important**: Claude Code logs thinking, text, and tool_use in SEPARATE records with the SAME messageId. Never skip records by messageId alone - this would lose text/response content.
 
 ## Important Notes for Development
 

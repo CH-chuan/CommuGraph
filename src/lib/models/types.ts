@@ -358,7 +358,7 @@ export interface WorkflowLane {
   totalDurationMs?: number;
   totalTokens?: number;
   totalToolUseCount?: number;
-  status?: 'completed' | 'failed';
+  status?: 'completed' | 'failed' | 'running';
 }
 
 /** Complete workflow graph for visualization */

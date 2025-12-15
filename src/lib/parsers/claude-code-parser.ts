@@ -98,24 +98,81 @@ interface UserMessage {
 
 /** Tool use result metadata */
 interface ToolUseResultMeta {
-  status?: 'completed' | 'failed';
+  // Task/Agent tools
+  status?: 'completed' | 'failed' | 'running';
   prompt?: string;
   agentId?: string;
   content?: { type: string; text: string }[];
   totalDurationMs?: number;
   totalTokens?: number;
   totalToolUseCount?: number;
+  isAsync?: boolean;
+  description?: string;
+
+  // Bash tool
   stdout?: string;
   stderr?: string;
   interrupted?: boolean;
   isImage?: boolean;
+  backgroundTaskId?: string;
+
+  // Read tool
   type?: string;
   file?: {
     filePath: string;
     content: string;
     numLines: number;
+    startLine?: number;
+    totalLines?: number;
   };
+
+  // Write/Edit tools
+  filePath?: string;
+  originalFile?: string;
+  newString?: string;
+  oldString?: string;
+  structuredPatch?: unknown;
+  userModified?: boolean;
+  replaceAll?: boolean;
+
+  // Glob tool
   filenames?: string[];
+  numFiles?: number;
+  durationMs?: number;
+  truncated?: boolean;
+
+  // Grep tool
+  mode?: string;
+  numLines?: number;
+  appliedLimit?: number;
+
+  // WebFetch tool
+  url?: string;
+  code?: number;
+  codeText?: string;
+  bytes?: number;
+  result?: string;
+
+  // TaskOutput tool
+  retrieval_status?: 'success' | 'timeout';
+  task?: unknown;
+
+  // AgentOutputTool
+  agents?: Record<string, {
+    status: string;
+    description?: string;
+    prompt?: string;
+    output?: string;
+  }>;
+
+  // EnterPlanMode/ExitPlanMode
+  message?: string;
+  plan?: string;
+  isAgent?: boolean;
+
+  // TodoWrite
+  oldTodos?: unknown[];
+  newTodos?: unknown[];
 }
 
 /** Compact metadata for context compaction */
@@ -255,7 +312,7 @@ export interface SubAgentInfo {
   totalDurationMs?: number;
   totalTokens?: number;
   totalToolUseCount?: number;
-  status?: 'completed' | 'failed';
+  status?: 'completed' | 'failed' | 'running';
 }
 
 /** Parse result with full context */
@@ -434,23 +491,78 @@ export class ClaudeCodeParser extends BaseParser {
       childrenMap.get(parent)!.push(record);
     }
 
-    // Phase 3: Group USER INPUT records by timestamp for phantom branch detection
+    // Phase 3: Deduplicate TOOL RESULT records by tool_use_id
+    // Phantom branches can create duplicate tool_result records with:
+    // - Same tool_use_id (responding to the same tool call)
+    // - Same timestamp
+    // - Different UUIDs and parentUuids (from phantom branches)
+    //
+    // NOTE: Parallel tool calls have DIFFERENT tool_use_ids, so deduplicating
+    // by tool_use_id is safe - it only removes phantom duplicates.
+    const toolResultByToolUseId = new Map<string, RawLogRecord[]>();
+    for (const record of afterAssistantDedup) {
+      if (record.type !== 'user') continue;
+      const msg = record.message as UserMessage | undefined;
+      if (!msg?.content || !Array.isArray(msg.content)) continue;
+
+      // Find tool_result content and extract tool_use_id
+      for (const c of msg.content) {
+        if (c.type === 'tool_result') {
+          const toolUseId = (c as ToolResultContent).tool_use_id;
+          if (toolUseId) {
+            if (!toolResultByToolUseId.has(toolUseId)) {
+              toolResultByToolUseId.set(toolUseId, []);
+            }
+            toolResultByToolUseId.get(toolUseId)!.push(record);
+          }
+          break; // One tool_result per record
+        }
+      }
+    }
+
+    // Identify duplicate tool_result records (same tool_use_id)
+    const phantomToolResultUuids = new Set<string>();
+    for (const [, recs] of toolResultByToolUseId) {
+      if (recs.length <= 1) continue;
+
+      // Sort by timestamp, keep the first one
+      const sortedRecs = [...recs].sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+
+      // Mark all but the first as phantom duplicates
+      for (let i = 1; i < sortedRecs.length; i++) {
+        phantomToolResultUuids.add(sortedRecs[i].uuid);
+      }
+    }
+
+    // Filter out phantom tool_result records
+    const afterToolResultDedup = afterAssistantDedup.filter(
+      r => !phantomToolResultUuids.has(r.uuid)
+    );
+
+    // Rebuild children map after tool_result deduplication
+    const childrenMapAfterToolDedup = new Map<string | null, RawLogRecord[]>();
+    for (const record of afterToolResultDedup) {
+      const parent = record.parentUuid ?? null;
+      if (!childrenMapAfterToolDedup.has(parent)) childrenMapAfterToolDedup.set(parent, []);
+      childrenMapAfterToolDedup.get(parent)!.push(record);
+    }
+
+    // Phase 4: Group USER INPUT records by timestamp for phantom branch detection
     // The phantom branch bug causes Claude Code to log the same user message multiple
     // times with different UUIDs. This affects:
     // - Image messages: split into multiple records (image, image, text separately)
     // - Text messages: logged twice with different formats (string vs array with text)
     //
-    // We should SKIP tool_result records - multiple tool results at the same timestamp
-    // are legitimate (parallel tool calls returning together).
-    //
-    // We should INCLUDE all other user records (string content, or array with images/text).
+    // We SKIP tool_result records here - they are already deduplicated by tool_use_id above.
     const timestampGroups = new Map<string, RawLogRecord[]>();
-    for (const record of afterAssistantDedup) {
+    for (const record of afterToolResultDedup) {
       if (record.type !== 'user') continue;
       const msg = record.message as UserMessage | undefined;
       if (!msg?.content) continue;
 
-      // Skip records that contain tool_result - these are tool execution results, not user input
+      // Skip records that contain tool_result - already handled in Phase 3
       if (Array.isArray(msg.content)) {
         const hasToolResult = msg.content.some(
           (c): c is ToolResultContent => c.type === 'tool_result'
@@ -463,7 +575,7 @@ export class ClaudeCodeParser extends BaseParser {
       timestampGroups.get(ts)!.push(record);
     }
 
-    // Phase 4: Identify phantom roots (subset duplicates at same timestamp)
+    // Phase 5: Identify phantom roots (subset duplicates at same timestamp)
     // Rule: The richest record (most content blocks) is the main.
     //       ALL others are phantoms UNLESS they have different non-empty text
     //       (which indicates a legitimate parallel branch, not a duplicate).
@@ -511,7 +623,7 @@ export class ClaudeCodeParser extends BaseParser {
       }
     }
 
-    // Phase 5: Collect all UUIDs in phantom branches (BFS from phantom roots)
+    // Phase 6: Collect all UUIDs in phantom branches (BFS from phantom roots)
     const phantomUuids = new Set<string>();
 
     for (const root of phantomBranchRoots) {
@@ -521,14 +633,14 @@ export class ClaudeCodeParser extends BaseParser {
         if (phantomUuids.has(record.uuid)) continue;
         phantomUuids.add(record.uuid);
 
-        // Add children of this record to queue
-        const children = childrenMap.get(record.uuid) || [];
+        // Add children of this record to queue (use map after tool_result dedup)
+        const children = childrenMapAfterToolDedup.get(record.uuid) || [];
         queue.push(...children);
       }
     }
 
-    // Phase 6: Filter out phantom branch records
-    return afterAssistantDedup.filter(r => !phantomUuids.has(r.uuid));
+    // Phase 7: Filter out phantom branch records
+    return afterToolResultDedup.filter(r => !phantomUuids.has(r.uuid));
   }
 
   /**
@@ -730,9 +842,12 @@ export class ClaudeCodeParser extends BaseParser {
         outputTokens: 0,
       };
 
-      // DEDUPLICATE: Track processed messageIds to avoid duplicate content
-      // Phantom branches have same messageId but different UUIDs
-      const processedMessageIds = new Set<string>();
+      // DEDUPLICATE: Track seen content to avoid duplicates from phantom branches
+      // Phantom branches have the same content but different UUIDs
+      // NOTE: We must NOT skip by messageId because Claude Code logs each content type
+      // (thinking, text, tool_use) in SEPARATE records with the SAME messageId
+      const seenThinkingSignatures = new Set<string>();
+      const seenTextContent = new Set<string>();
       const seenToolUseIds = new Set<string>();
 
       // Aggregate content from all chunks
@@ -740,19 +855,25 @@ export class ClaudeCodeParser extends BaseParser {
         const msg = record.message as AssistantMessage | undefined;
         if (!msg?.content) continue;
 
-        // Skip if we've already processed a record with this messageId
-        if (processedMessageIds.has(msg.id)) {
-          continue;
-        }
-        processedMessageIds.add(msg.id);
-
         for (const content of msg.content) {
           if (content.type === 'thinking') {
-            response.thinking = (response.thinking || '') + content.thinking;
+            // Deduplicate by signature (if available) or content prefix
+            const thinkingContent = content as ThinkingContent;
+            const dedupeKey = thinkingContent.signature || thinkingContent.thinking.slice(0, 200);
+            if (!seenThinkingSignatures.has(dedupeKey)) {
+              seenThinkingSignatures.add(dedupeKey);
+              response.thinking = (response.thinking || '') + thinkingContent.thinking;
+            }
           } else if (content.type === 'text') {
-            response.text = (response.text || '') + content.text;
+            // Deduplicate by text content prefix
+            const textContent = content as TextContent;
+            const dedupeKey = textContent.text.slice(0, 200);
+            if (!seenTextContent.has(dedupeKey)) {
+              seenTextContent.add(dedupeKey);
+              response.text = (response.text || '') + textContent.text;
+            }
           } else if (content.type === 'tool_use') {
-            // Additional safety: deduplicate by tool_use_id
+            // Deduplicate by tool_use_id
             if (!seenToolUseIds.has(content.id)) {
               seenToolUseIds.add(content.id);
               response.toolCalls.push({
@@ -1124,27 +1245,69 @@ export class ClaudeCodeParser extends BaseParser {
    */
   private getToolDescription(name: string, input: Record<string, unknown>): string {
     switch (name) {
+      // File operations
       case 'Read':
         return `Read file: ${input.file_path || 'unknown'}`;
       case 'Write':
         return `Write file: ${input.file_path || 'unknown'}`;
       case 'Edit':
         return `Edit file: ${input.file_path || 'unknown'}`;
-      case 'Bash':
-        return `Bash: ${String(input.command || '').slice(0, 100)}`;
+      case 'NotebookEdit':
+        return `Edit notebook: ${input.notebook_path || 'unknown'} (${input.edit_mode || 'replace'})`;
+
+      // Search operations
       case 'Glob':
         return `Glob: ${input.pattern || 'unknown'}`;
       case 'Grep':
-        return `Grep: ${input.pattern || 'unknown'}`;
+        return `Grep: ${input.pattern || 'unknown'}${input.path ? ` in ${input.path}` : ''}`;
+
+      // Shell operations
+      case 'Bash':
+        return `Bash: ${String(input.command || '').slice(0, 100)}`;
+      case 'KillShell':
+        return `Kill shell: ${input.shell_id || 'unknown'}`;
+
+      // Agent/Task operations
       case 'Task':
         return `Task (${input.subagent_type || 'unknown'}): ${String(input.description || input.prompt || '').slice(0, 100)}`;
-      case 'TodoWrite':
-        return `TodoWrite: ${JSON.stringify(input.todos || []).slice(0, 100)}`;
+      case 'TaskOutput':
+        return `Get task output: ${input.task_id || 'unknown'}${input.block === false ? ' (non-blocking)' : ''}`;
+      case 'AgentOutputTool':
+        return `Get agent output: ${input.agentId || 'unknown'}`;
+
+      // Planning operations
+      case 'EnterPlanMode':
+        return 'Enter plan mode';
+      case 'ExitPlanMode':
+        return `Exit plan mode${input.launchSwarm ? ' (launch swarm)' : ''}`;
+
+      // Web operations
+      case 'WebFetch':
+        return `Fetch URL: ${String(input.url || 'unknown').slice(0, 80)}`;
+      case 'WebSearch':
+        return `Web search: ${String(input.query || 'unknown').slice(0, 80)}`;
+
+      // User interaction
       case 'AskUserQuestion': {
         const questions = input.questions as Array<{question: string}> | undefined;
         const firstQ = questions?.[0]?.question || '';
         return `Ask user: ${firstQ.slice(0, 100)}`;
       }
+      case 'TodoWrite': {
+        const todos = input.todos as Array<{content: string; status: string}> | undefined;
+        const inProgress = todos?.filter(t => t.status === 'in_progress').map(t => t.content) || [];
+        if (inProgress.length > 0) {
+          return `Todo: ${inProgress[0].slice(0, 80)}`;
+        }
+        return `TodoWrite: ${todos?.length || 0} items`;
+      }
+
+      // Skill/Command operations
+      case 'Skill':
+        return `Skill: ${input.skill || 'unknown'}`;
+      case 'SlashCommand':
+        return `Command: ${input.command || 'unknown'}`;
+
       default:
         return `${name}: ${JSON.stringify(input).slice(0, 100)}`;
     }
