@@ -171,6 +171,7 @@ function convertToReactFlow(
         label: node.label,
         contentPreview: node.contentPreview,
         toolName: node.toolName,
+        toolInput: node.toolInput, // Tool call arguments
         durationMs: node.durationMs,
         inputTokens: node.inputTokens,
         outputTokens: node.outputTokens,

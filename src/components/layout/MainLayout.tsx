@@ -40,19 +40,6 @@ function ViewModeTabs() {
   return (
     <div className="flex items-center gap-1 px-2 py-1 bg-slate-100 border-b border-slate-200">
       <button
-        onClick={() => setViewMode('workflow')}
-        className={`
-          flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors
-          ${viewMode === 'workflow'
-            ? 'bg-white text-blue-600 shadow-sm'
-            : 'text-slate-600 hover:bg-slate-200'
-          }
-        `}
-      >
-        <GitBranch className="w-4 h-4" />
-        Workflow
-      </button>
-      <button
         onClick={() => setViewMode('annotation')}
         className={`
           flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors
@@ -64,6 +51,19 @@ function ViewModeTabs() {
       >
         <Tag className="w-4 h-4" />
         Annotation
+      </button>
+      <button
+        onClick={() => setViewMode('workflow')}
+        className={`
+          flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors
+          ${viewMode === 'workflow'
+            ? 'bg-white text-blue-600 shadow-sm'
+            : 'text-slate-600 hover:bg-slate-200'
+          }
+        `}
+      >
+        <GitBranch className="w-4 h-4" />
+        Workflow
       </button>
     </div>
   );

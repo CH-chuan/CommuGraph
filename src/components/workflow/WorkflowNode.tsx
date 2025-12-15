@@ -39,9 +39,11 @@ import {
   Bot,
   Expand,
   Zap,
+  Image as ImageIcon,
 } from 'lucide-react';
 import type { WorkflowNodeType, SubAgentInfo, SessionMetadata } from '@/lib/models/types';
 import { formatSubAgentName } from '@/utils/agent-naming';
+import { getToolColors, getToolCategory } from '@/utils/tool-colors';
 
 // Node data interface with enhanced fields
 export interface WorkflowNodeData {
@@ -52,6 +54,7 @@ export interface WorkflowNodeData {
   label: string;
   contentPreview: string;
   toolName?: string;
+  toolInput?: Record<string, unknown>; // Tool call arguments
   durationMs?: number;
   inputTokens?: number;
   outputTokens?: number;
@@ -140,6 +143,12 @@ const nodeTypeConfig: Record<
     bgColor: 'bg-blue-50',
     borderColor: 'border-blue-400',
     textColor: 'text-blue-700',
+  },
+  user_input_image: {
+    icon: <ImageIcon className="w-4 h-4" />,
+    bgColor: 'bg-sky-100',
+    borderColor: 'border-sky-500',
+    textColor: 'text-sky-700',
   },
   agent_reasoning: {
     icon: <Brain className="w-4 h-4" />,
@@ -437,7 +446,12 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
     return <SubAgentToolCallComponent data={nodeData} selected={selected} />;
   }
 
-  const config = nodeTypeConfig[nodeData.nodeType] || nodeTypeConfig.system_notice;
+  // Use sky colors for user_input with images
+  const hasImages = nodeData.images && nodeData.images.length > 0;
+  const nodeTypeKey = nodeData.nodeType === 'user_input' && hasImages
+    ? 'user_input_image'
+    : nodeData.nodeType;
+  const config = nodeTypeConfig[nodeTypeKey] || nodeTypeConfig.system_notice;
 
   // Use tool-specific icon for tool calls
   const icon =

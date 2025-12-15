@@ -37,7 +37,7 @@ export function PreFlightModal({ open, onClose }: PreFlightModalProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [framework, setFramework] = useState('claudecode');
   const [subAgentDir, setSubAgentDir] = useState('');
-  const { setGraphId, setTotalSteps, setMainAgentStepCount, setFramework: setAppFramework } = useAppContext();
+  const { setGraphId, setTotalSteps, setMainAgentStepCount, setFramework: setAppFramework, setViewMode } = useAppContext();
   const uploadMutation = useUpload();
 
   const isClaudeCode = framework === 'claudecode';
@@ -74,6 +74,10 @@ export function PreFlightModal({ open, onClose }: PreFlightModalProps) {
           setTotalSteps(data.total_steps);
           setMainAgentStepCount(data.main_agent_steps);
           setAppFramework(data.framework);
+          // Set annotation view as default for Claude Code
+          if (data.framework === 'claudecode') {
+            setViewMode('annotation');
+          }
           setFiles([]);
           setSubAgentDir('');
           onClose();
@@ -127,6 +131,10 @@ export function PreFlightModal({ open, onClose }: PreFlightModalProps) {
             setTotalSteps(data.total_steps);
             setMainAgentStepCount(data.main_agent_steps);
             setAppFramework(data.framework);
+            // Set annotation view as default for Claude Code
+            if (data.framework === 'claudecode') {
+              setViewMode('annotation');
+            }
             onClose();
           },
         }

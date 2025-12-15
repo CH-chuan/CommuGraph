@@ -21,6 +21,7 @@ import {
   Tag,
   Clock,
   Settings,
+  Image as ImageIcon,
 } from 'lucide-react';
 import type { AnnotationRecord, LabelRecord } from '@/lib/annotation/types';
 
@@ -66,11 +67,15 @@ function UserTurnNode({ data, selected }: { data: AnnotationNodeData; selected?:
   const text = record.text_or_artifact_ref?.text || '';
   const images = record.text_or_artifact_ref?.images;
 
+  // Use sky colors for user input with images
+  const hasImages = images && images.length > 0;
+
   return (
     <div
       className={`
-        bg-white rounded-lg shadow-md border-2 border-blue-400 min-w-[280px] max-w-[400px]
-        ${selected ? 'ring-2 ring-offset-1 ring-blue-500 shadow-lg' : ''}
+        bg-white rounded-lg shadow-md border-2 min-w-[280px] max-w-[400px]
+        ${hasImages ? 'border-sky-500' : 'border-blue-400'}
+        ${selected ? `ring-2 ring-offset-1 shadow-lg ${hasImages ? 'ring-sky-500' : 'ring-blue-500'}` : ''}
         ${isHighlighted ? 'ring-2 ring-offset-1 ring-amber-400' : ''}
       `}
     >
@@ -78,26 +83,30 @@ function UserTurnNode({ data, selected }: { data: AnnotationNodeData; selected?:
         type="target"
         position={Position.Top}
         id="top"
-        className="!bg-blue-500 !w-3 !h-3 !border-2 !border-white"
+        className={`!w-3 !h-3 !border-2 !border-white ${hasImages ? '!bg-sky-500' : '!bg-blue-500'}`}
       />
       <Handle
         type="source"
         position={Position.Bottom}
         id="bottom"
-        className="!bg-blue-500 !w-3 !h-3 !border-2 !border-white"
+        className={`!w-3 !h-3 !border-2 !border-white ${hasImages ? '!bg-sky-500' : '!bg-blue-500'}`}
       />
 
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-blue-100 rounded-t-md">
-        <User className="w-4 h-4 text-blue-600" />
-        <span className="text-sm font-semibold text-blue-700">User Prompt</span>
+      <div className={`flex items-center gap-2 px-3 py-2 rounded-t-md ${hasImages ? 'bg-sky-200' : 'bg-blue-100'}`}>
+        {hasImages ? (
+          <ImageIcon className="w-4 h-4 text-sky-600" />
+        ) : (
+          <User className="w-4 h-4 text-blue-600" />
+        )}
+        <span className={`text-sm font-semibold ${hasImages ? 'text-sky-700' : 'text-blue-700'}`}>User Prompt</span>
         <span className="ml-auto text-xs text-slate-500">#{sequenceIndex}</span>
       </div>
 
       {/* Content */}
       <div className="px-3 py-2">
         {/* Image thumbnails - render before text */}
-        {images && images.length > 0 && (
+        {hasImages && (
           <div className="flex flex-wrap gap-1 mb-2">
             {images.map((img, imgIdx) => (
               <img

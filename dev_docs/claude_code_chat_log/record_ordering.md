@@ -357,7 +357,7 @@ This means signature dedup (Phase 1) is technically redundant - branch pruning h
 2. **Performance** - Fewer records to process in later phases
 3. **Safety** - If timestamp grouping misses something, signature dedup catches it
 
-### Assistant Record Deduplication by messageId
+### Assistant Record Deduplication by Content
 
 Even after phantom branch pruning, some phantom assistant records may survive (e.g., when the phantom root user record wasn't identified as a phantom due to having "different non-empty text"). These phantom assistant records have:
 
@@ -372,31 +372,39 @@ When `mergeAssistantRecords()` groups records by `requestId`, phantom branch dup
 - Duplicate `[Response]` text (same text appended twice)
 - Duplicate tool_use entries (same tool call pushed twice)
 
-**Solution:** Deduplicate by `messageId` within each `requestId` group:
+**IMPORTANT:** We must deduplicate by **content**, NOT by messageId!
+
+Claude Code logs each content type (thinking, text, tool_use) in SEPARATE records with the SAME messageId. If we skip records by messageId, we lose the text/response content entirely.
+
+**Solution:** Deduplicate by content signature/prefix within each `requestId` group:
 
 ```typescript
 // mergeAssistantRecords() in claude-code-parser.ts
-const processedMessageIds = new Set<string>();
+const seenThinkingSignatures = new Set<string>();
+const seenTextContent = new Set<string>();
 const seenToolUseIds = new Set<string>();
 
 for (const record of records) {
   const msg = record.message as AssistantMessage;
   if (!msg?.content) continue;
 
-  // Skip if we've already processed a record with this messageId
-  // (phantom branches have same messageId but different UUIDs)
-  if (processedMessageIds.has(msg.id)) {
-    continue;
-  }
-  processedMessageIds.add(msg.id);
-
   for (const content of msg.content) {
     if (content.type === 'thinking') {
-      response.thinking = (response.thinking || '') + content.thinking;
+      // Deduplicate by signature (if available) or content prefix
+      const dedupeKey = content.signature || content.thinking.slice(0, 200);
+      if (!seenThinkingSignatures.has(dedupeKey)) {
+        seenThinkingSignatures.add(dedupeKey);
+        response.thinking = (response.thinking || '') + content.thinking;
+      }
     } else if (content.type === 'text') {
-      response.text = (response.text || '') + content.text;
+      // Deduplicate by text content prefix
+      const dedupeKey = content.text.slice(0, 200);
+      if (!seenTextContent.has(dedupeKey)) {
+        seenTextContent.add(dedupeKey);
+        response.text = (response.text || '') + content.text;
+      }
     } else if (content.type === 'tool_use') {
-      // Additional safety: deduplicate by tool_use_id
+      // Deduplicate by tool_use_id
       if (!seenToolUseIds.has(content.id)) {
         seenToolUseIds.add(content.id);
         response.toolCalls.push({...});

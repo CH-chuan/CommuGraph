@@ -27,6 +27,8 @@ interface ChatMessage {
   timestamp?: string;
   nodeType?: WorkflowNodeType; // For Claude Code messages
   laneId?: string; // For Claude Code - 'main' or 'agent-{id}'
+  // Tool call arguments (for tool_call messages)
+  toolInput?: Record<string, unknown>;
   // Context compaction fields
   isContextCompact?: boolean;
   compactSummary?: string;
@@ -47,6 +49,11 @@ const nodeTypeColors: Record<string, { bg: string; border: string; text: string 
     bg: 'bg-blue-50',
     border: 'border-blue-400',
     text: 'text-blue-700',
+  },
+  user_input_image: {
+    bg: 'bg-sky-100',
+    border: 'border-sky-500',
+    text: 'text-sky-700',
   },
   agent_reasoning: {
     bg: 'bg-purple-50',
@@ -465,7 +472,12 @@ export function ChatLog() {
               const isPast = isAnnotationView ? true : msg.stepIndex <= effectiveStepIndex;
 
               // Get nodeType colors for Claude Code messages
-              const typeColors = msg.nodeType ? nodeTypeColors[msg.nodeType] : null;
+              // Use sky colors for user_input with images
+              const hasImages = msg.images && msg.images.length > 0;
+              const nodeTypeKey = msg.nodeType === 'user_input' && hasImages
+                ? 'user_input_image'
+                : msg.nodeType;
+              const typeColors = nodeTypeKey ? nodeTypeColors[nodeTypeKey] : null;
 
               // Fallback to agent-based colors for non-Claude Code
               const senderColor = agentColors.get(msg.sender) || '#64748b';
