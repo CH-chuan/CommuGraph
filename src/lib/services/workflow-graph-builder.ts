@@ -535,7 +535,7 @@ export class WorkflowGraphBuilder {
   /**
    * Connect session start node to the first main lane node.
    */
-  private connectSessionStartNode(_nodeByUuid: Map<string, WorkflowNode>): void {
+  private connectSessionStartNode(): void {
     const sessionStartNode = this.nodes.get('session-start');
     if (!sessionStartNode) return;
 

@@ -221,8 +221,7 @@ function identifyParallelGroups(
  */
 export function computeTreeLayout(
   nodes: WorkflowNode[],
-  edges: WorkflowEdge[],
-  _lanes?: WorkflowLane[]
+  edges: WorkflowEdge[]
 ): TreeLayout {
   const config = TREE_LAYOUT_CONFIG;
 
@@ -405,7 +404,7 @@ export function computeWorkflowLayout(
   edges: WorkflowEdge[],
   lanes: WorkflowLane[]
 ): TreeLayout & { lanes: Array<WorkflowLane & { x: number; width: number }> } {
-  const layout = computeTreeLayout(nodes, edges, lanes);
+  const layout = computeTreeLayout(nodes, edges);
 
   // Add lane positions for backward compatibility (not used in new layout)
   const layoutedLanes = lanes.map((lane, idx) => ({

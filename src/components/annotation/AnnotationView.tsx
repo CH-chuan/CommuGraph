@@ -535,6 +535,7 @@ export function AnnotationView({
           onClick={() => setModalImage(null)}
         >
           <div className="relative max-w-[90vw] max-h-[90vh]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`data:${modalImage.mediaType};base64,${modalImage.data}`}
               alt="Full size"

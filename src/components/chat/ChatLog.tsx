@@ -639,6 +639,7 @@ export function ChatLog() {
                     {msg.images && msg.images.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-2">
                         {msg.images.map((img, imgIdx) => (
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             key={imgIdx}
                             src={`data:${img.mediaType};base64,${img.data}`}
@@ -708,6 +709,7 @@ export function ChatLog() {
           onClick={() => setModalImage(null)}
         >
           <div className="relative max-w-[90vw] max-h-[90vh]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`data:${modalImage.mediaType};base64,${modalImage.data}`}
               alt="Full size"

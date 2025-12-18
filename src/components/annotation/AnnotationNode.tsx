@@ -109,6 +109,7 @@ function UserTurnNode({ data, selected }: { data: AnnotationNodeData; selected?:
         {hasImages && (
           <div className="flex flex-wrap gap-1 mb-2">
             {images.map((img, imgIdx) => (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={imgIdx}
                 src={`data:${img.mediaType};base64,${img.data}`}
