@@ -43,7 +43,7 @@ import {
 } from 'lucide-react';
 import type { WorkflowNodeType, SubAgentInfo, SessionMetadata } from '@/lib/models/types';
 import { formatSubAgentName } from '@/utils/agent-naming';
-import { getToolColors, getToolCategory } from '@/utils/tool-colors';
+import { getToolColors } from '@/utils/tool-colors';
 
 // Node data interface with enhanced fields
 export interface WorkflowNodeData {
@@ -547,6 +547,7 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
         {nodeData.images && nodeData.images.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-2">
             {nodeData.images.map((img, imgIdx) => (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={imgIdx}
                 src={`data:${img.mediaType};base64,${img.data}`}

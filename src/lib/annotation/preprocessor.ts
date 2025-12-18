@@ -590,7 +590,7 @@ export class AnnotationPreprocessor {
 
     // Initialize with all ready records, sorted by timestamp
     // Use an array as a simple priority queue (re-sort when needed)
-    let readyQueue = records.filter(isReady);
+    const readyQueue = records.filter(isReady);
     readyQueue.sort((a, b) => getTimestamp(a) - getTimestamp(b));
 
     // Build children map for efficient lookup

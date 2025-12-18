@@ -67,7 +67,7 @@ function convertToReactFlow(
   onSubAgentExpand: (agentId: string) => void,
   onImageClick: (image: { mediaType: string; data: string }) => void
 ): { nodes: Node[]; edges: Edge[]; totalHeight: number } {
-  const { nodes, edges, lanes } = snapshot;
+  const { nodes, edges } = snapshot;
 
   // Build list of main agent nodes sorted by stepIndex for step mapping
   // Main agent nodes are in 'main' lane and not session start nodes
@@ -148,7 +148,7 @@ function convertToReactFlow(
   );
 
   // Compute tree layout (handles main lane only, sub-agents are cards)
-  const layout = computeTreeLayout(visibleNodes, visibleEdges, lanes);
+  const layout = computeTreeLayout(visibleNodes, visibleEdges);
 
   // Convert to React Flow nodes
   const reactFlowNodes: Node[] = layout.nodes.map(node => {
@@ -383,6 +383,7 @@ export function WorkflowView({ data }: WorkflowViewProps) {
           onClick={() => setModalImage(null)}
         >
           <div className="relative max-w-[90vw] max-h-[90vh]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`data:${modalImage.mediaType};base64,${modalImage.data}`}
               alt="Full size"

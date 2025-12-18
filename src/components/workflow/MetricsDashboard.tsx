@@ -23,7 +23,7 @@ import {
   ChevronRight,
   Filter,
 } from 'lucide-react';
-import type { WorkflowGraphSnapshot, WorkflowLane } from '@/lib/models/types';
+import type { WorkflowGraphSnapshot, WorkflowLane, WorkflowNode } from '@/lib/models/types';
 import { formatSubAgentName } from '@/utils/agent-naming';
 import { useAppContext } from '@/context/app-context';
 
@@ -168,6 +168,54 @@ function getAgentFilterLabel(lane: WorkflowLane): string {
 }
 
 /**
+ * Helper to calculate metrics from nodes
+ */
+function calculateNodeMetrics(filteredNodes: WorkflowNode[]) {
+  let tokens = 0;
+  let toolCalls = 0;
+  let successCount = 0;
+  let failureCount = 0;
+  const activityCounts: Record<string, number> = {};
+  const toolCounts: Record<string, number> = {};
+
+  for (const node of filteredNodes) {
+    tokens += (node.inputTokens || 0) + (node.outputTokens || 0);
+
+    // For activity counts, merge tool_result into result_success
+    // so that Success + Failure = Tool Calls
+    if (node.nodeType === 'tool_result') {
+      activityCounts['result_success'] = (activityCounts['result_success'] || 0) + 1;
+    } else {
+      activityCounts[node.nodeType] = (activityCounts[node.nodeType] || 0) + 1;
+    }
+
+    if (node.nodeType === 'tool_call') {
+      toolCalls++;
+      if (node.toolName) {
+        toolCounts[node.toolName] = (toolCounts[node.toolName] || 0) + 1;
+      }
+    }
+    // Count tool results: result_success and tool_result are both successful
+    if (node.nodeType === 'result_success' || node.nodeType === 'tool_result') {
+      successCount++;
+    }
+    if (node.nodeType === 'result_failure') {
+      failureCount++;
+    }
+  }
+
+  // Success rate = successful results / (successful + failed results)
+  const totalResults = successCount + failureCount;
+  const successRate = totalResults > 0 ? successCount / totalResults : 1;
+
+  const sortedTools = Object.entries(toolCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  return { tokens, toolCalls, successCount, failureCount, successRate, activityCounts, sortedTools, nodeCount: filteredNodes.length };
+}
+
+/**
  * MetricsDashboard Component
  */
 export function MetricsDashboard({ data }: MetricsDashboardProps) {
@@ -198,52 +246,6 @@ export function MetricsDashboard({ data }: MetricsDashboardProps) {
     const option = filterOptions.find(o => o.value === selectedMetricsAgent);
     return option?.label || 'Main Agent';
   }, [filterOptions, selectedMetricsAgent]);
-
-  // Helper to calculate metrics from nodes
-  const calculateNodeMetrics = (filteredNodes: typeof data.nodes) => {
-    let tokens = 0;
-    let toolCalls = 0;
-    let successCount = 0;
-    let failureCount = 0;
-    const activityCounts: Record<string, number> = {};
-    const toolCounts: Record<string, number> = {};
-
-    for (const node of filteredNodes) {
-      tokens += (node.inputTokens || 0) + (node.outputTokens || 0);
-
-      // For activity counts, merge tool_result into result_success
-      // so that Success + Failure = Tool Calls
-      if (node.nodeType === 'tool_result') {
-        activityCounts['result_success'] = (activityCounts['result_success'] || 0) + 1;
-      } else {
-        activityCounts[node.nodeType] = (activityCounts[node.nodeType] || 0) + 1;
-      }
-
-      if (node.nodeType === 'tool_call') {
-        toolCalls++;
-        if (node.toolName) {
-          toolCounts[node.toolName] = (toolCounts[node.toolName] || 0) + 1;
-        }
-      }
-      // Count tool results: result_success and tool_result are both successful
-      if (node.nodeType === 'result_success' || node.nodeType === 'tool_result') {
-        successCount++;
-      }
-      if (node.nodeType === 'result_failure') {
-        failureCount++;
-      }
-    }
-
-    // Success rate = successful results / (successful + failed results)
-    const totalResults = successCount + failureCount;
-    const successRate = totalResults > 0 ? successCount / totalResults : 1;
-
-    const sortedTools = Object.entries(toolCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10);
-
-    return { tokens, toolCalls, successCount, failureCount, successRate, activityCounts, sortedTools, nodeCount: filteredNodes.length };
-  };
 
   // Calculate metrics based on selected filter
   const metrics = useMemo(() => {
