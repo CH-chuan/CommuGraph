@@ -127,6 +127,8 @@ export function GraphView() {
         edgeTypes={edgeTypes}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
+        panOnDrag={true}
+        selectionOnDrag={false}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         attributionPosition="bottom-right"
