@@ -67,6 +67,7 @@ src/components/
 ├── providers/
 │   └── Providers.tsx         # QueryClient + AppProvider wrapper
 └── ui/                       # shadcn/ui primitives (Button, Dialog, Slider, etc.)
+    └── CollapsibleSection.tsx # Reusable collapsible panel component
 ```
 
 ### Claude Code Components

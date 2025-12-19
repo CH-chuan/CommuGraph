@@ -1,6 +1,6 @@
 # CommuGraph User Interactions Reference
 
-**Last Updated**: 2025-12-13
+**Last Updated**: 2025-12-19
 
 This document describes all supported user interactions in the CommuGraph visualization interface.
 

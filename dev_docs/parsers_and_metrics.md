@@ -124,6 +124,30 @@ MergedLLMResponse {
 
 ---
 
+### 1.3 Agent ID Extractor Utilities
+
+**File**: `src/lib/parsers/agent-id-extractor.ts`
+
+**Purpose**: Efficient extraction of sub-agent IDs from JSONL content using regex (avoids full JSON parsing).
+
+**Functions**:
+
+| Function | Purpose | Example |
+|----------|---------|---------|
+| `extractAgentIdsFromContent(content)` | Extract unique agent IDs from JSONL | Returns `Set<string>` of IDs |
+| `buildSubAgentFilename(agentId)` | Build filename from ID | `"7e0f7211"` → `"agent-7e0f7211.jsonl"` |
+| `isSubAgentFile(filename)` | Check if filename is sub-agent | `"agent-abc.jsonl"` → `true` |
+| `extractAgentIdFromFilename(filename)` | Extract ID from filename | `"agent-7e0f7211.jsonl"` → `"7e0f7211"` |
+
+**Agent ID Pattern**: Typically 7-8 character hexadecimal strings (e.g., `"7e0f7211"`).
+
+**Usage in SubAgentLoader**: The `sub-agent-loader.ts` service uses these utilities to:
+1. Extract agent IDs from main session content
+2. Build expected sub-agent filenames
+3. Load sub-agent files from uploaded files or filesystem
+
+---
+
 ## 2. Metrics Calculations
 
 ### 2.1 Communication Graph Metrics (Both Frameworks)
