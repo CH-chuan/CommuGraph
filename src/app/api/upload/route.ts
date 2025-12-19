@@ -25,6 +25,7 @@ import { WorkflowGraphBuilder } from '@/lib/services/workflow-graph-builder';
 import { loadSubAgentFiles, isValidSubAgentDirectory } from '@/lib/services/sub-agent-loader';
 import { isSubAgentFile } from '@/lib/parsers/agent-id-extractor';
 import { AnnotationPreprocessor } from '@/lib/annotation/preprocessor';
+import { badRequestResponse, errorResponse } from '@/lib/api/responses';
 import type { AnnotationRecord } from '@/lib/annotation/types';
 import type { UploadResponse, ErrorResponse, WorkflowGraphSnapshot } from '@/lib/models/types';
 
@@ -42,10 +43,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
 
     // Validate framework
     if (!framework) {
-      return NextResponse.json(
-        { error: 'Bad Request', message: 'No framework specified' },
-        { status: 400 }
-      );
+      return badRequestResponse('No framework specified');
     }
 
     // Collect all files (support both 'file' and 'files' field names)
@@ -60,29 +58,20 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
     }
 
     if (files.length === 0) {
-      return NextResponse.json(
-        { error: 'Bad Request', message: 'No file(s) provided' },
-        { status: 400 }
-      );
+      return badRequestResponse('No file(s) provided');
     }
 
     // Check total size
     let totalSize = 0;
     for (const file of files) {
       if (file.size > MAX_FILE_SIZE) {
-        return NextResponse.json(
-          { error: 'Bad Request', message: `File "${file.name}" exceeds maximum of ${MAX_FILE_SIZE / 1024 / 1024}MB` },
-          { status: 400 }
-        );
+        return badRequestResponse(`File "${file.name}" exceeds maximum of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
       }
       totalSize += file.size;
     }
 
     if (totalSize > MAX_TOTAL_SIZE) {
-      return NextResponse.json(
-        { error: 'Bad Request', message: `Total size exceeds maximum of ${MAX_TOTAL_SIZE / 1024 / 1024}MB` },
-        { status: 400 }
-      );
+      return badRequestResponse(`Total size exceeds maximum of ${MAX_TOTAL_SIZE / 1024 / 1024}MB`);
     }
 
     // Parse the log file(s)
@@ -117,10 +106,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
         }
 
         if (!mainFilename || !mainContent) {
-          return NextResponse.json(
-            { error: 'Bad Request', message: 'No main session file found (expected UUID format filename, not agent-*)' },
-            { status: 400 }
-          );
+          return badRequestResponse('No main session file found (expected UUID format filename, not agent-*)');
         }
 
         // Get sub-agent directory from form data (optional)
@@ -227,12 +213,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
     return NextResponse.json(response);
   } catch (e) {
     console.error('Upload error:', e);
-    return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        message: e instanceof Error ? e.message : 'An unexpected error occurred',
-      },
-      { status: 500 }
-    );
+    return errorResponse(e);
   }
 }

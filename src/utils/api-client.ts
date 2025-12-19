@@ -14,6 +14,24 @@ import type {
 } from '@/types/api';
 
 /**
+ * Internal helper for fetching JSON with consistent error handling.
+ */
+async function fetchJson<T>(
+  url: string,
+  options?: RequestInit,
+  errorContext?: string
+): Promise<T> {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      error.message || `${errorContext || 'Request failed'}: ${response.statusText}`
+    );
+  }
+  return response.json();
+}
+
+/**
  * Upload log file(s) and create a new graph session.
  *
  * For Claude Code: supports multiple files (main session + agent-*.jsonl)
@@ -76,16 +94,7 @@ export async function getGraph(
       ? `/api/graph/${graphId}?step=${step}`
       : `/api/graph/${graphId}`;
 
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(
-      error.message || `Failed to fetch graph: ${response.statusText}`
-    );
-  }
-
-  return response.json();
+  return fetchJson<GraphResponse>(url, undefined, 'Failed to fetch graph');
 }
 
 /**
@@ -100,16 +109,7 @@ export async function getWorkflow(
       ? `/api/graph/${graphId}/workflow?step=${step}`
       : `/api/graph/${graphId}/workflow`;
 
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(
-      error.message || `Failed to fetch workflow: ${response.statusText}`
-    );
-  }
-
-  return response.json();
+  return fetchJson<WorkflowResponse>(url, undefined, 'Failed to fetch workflow');
 }
 
 /**
@@ -118,48 +118,33 @@ export async function getWorkflow(
 export async function getAnnotations(
   graphId: string
 ): Promise<AnnotationsResponse> {
-  const response = await fetch(`/api/graph/${graphId}/annotations`);
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(
-      error.message || `Failed to fetch annotations: ${response.statusText}`
-    );
-  }
-
-  return response.json();
+  return fetchJson<AnnotationsResponse>(
+    `/api/graph/${graphId}/annotations`,
+    undefined,
+    'Failed to fetch annotations'
+  );
 }
 
 /**
  * Get graph metrics for a session.
  */
 export async function getMetrics(graphId: string): Promise<MetricsResponse> {
-  const response = await fetch(`/api/graph/${graphId}/metrics`);
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(
-      error.message || `Failed to fetch metrics: ${response.statusText}`
-    );
-  }
-
-  return response.json();
+  return fetchJson<MetricsResponse>(
+    `/api/graph/${graphId}/metrics`,
+    undefined,
+    'Failed to fetch metrics'
+  );
 }
 
 /**
  * Get list of available frameworks.
  */
 export async function getFrameworks(): Promise<FrameworkListResponse> {
-  const response = await fetch('/api/frameworks');
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(
-      error.message || `Failed to fetch frameworks: ${response.statusText}`
-    );
-  }
-
-  return response.json();
+  return fetchJson<FrameworkListResponse>(
+    '/api/frameworks',
+    undefined,
+    'Failed to fetch frameworks'
+  );
 }
 
 /**
@@ -168,16 +153,9 @@ export async function getFrameworks(): Promise<FrameworkListResponse> {
 export async function deleteSession(
   sessionId: string
 ): Promise<{ message: string }> {
-  const response = await fetch(`/api/session/${sessionId}`, {
-    method: 'DELETE',
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(
-      error.message || `Failed to delete session: ${response.statusText}`
-    );
-  }
-
-  return response.json();
+  return fetchJson<{ message: string }>(
+    `/api/session/${sessionId}`,
+    { method: 'DELETE' },
+    'Failed to delete session'
+  );
 }
