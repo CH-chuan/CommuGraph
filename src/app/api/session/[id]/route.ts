@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { deleteSession } from '@/lib/services/session-manager';
+import { notFoundResponse, errorResponse } from '@/lib/api/responses';
 import type { ErrorResponse } from '@/lib/models/types';
 
 export async function DELETE(
@@ -18,21 +19,12 @@ export async function DELETE(
     const deleted = deleteSession(id);
 
     if (!deleted) {
-      return NextResponse.json(
-        { error: 'Not Found', message: `Session with ID '${id}' not found` },
-        { status: 404 }
-      );
+      return notFoundResponse('Session', id);
     }
 
     return NextResponse.json({ message: `Session '${id}' deleted successfully` });
   } catch (e) {
     console.error('Session deletion error:', e);
-    return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        message: e instanceof Error ? e.message : 'An unexpected error occurred',
-      },
-      { status: 500 }
-    );
+    return errorResponse(e);
   }
 }

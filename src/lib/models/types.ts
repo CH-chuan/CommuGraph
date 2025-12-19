@@ -182,6 +182,18 @@ export interface SessionInfo {
   last_accessed: string;
 }
 
+export interface WorkflowResponse {
+  workflow: WorkflowGraphSnapshot;
+}
+
+export interface AnnotationsResponse {
+  annotations: import('@/lib/annotation/types').AnnotationRecord[];
+  total: number;
+  user_turn_count: number;
+  assistant_turn_count: number;
+  system_turn_count: number;
+}
+
 // ============================================================================
 // Internal Types (used by services)
 // ============================================================================

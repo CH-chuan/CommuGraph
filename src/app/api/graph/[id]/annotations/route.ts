@@ -6,16 +6,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getAnnotationRecords, getSession } from '@/lib/services/session-manager';
-import type { AnnotationRecord } from '@/lib/annotation/types';
-import type { ErrorResponse } from '@/lib/models/types';
-
-interface AnnotationsResponse {
-  annotations: AnnotationRecord[];
-  total: number;
-  user_turn_count: number;
-  assistant_turn_count: number;
-  system_turn_count: number;
-}
+import { notFoundResponse, badRequestResponse, errorResponse } from '@/lib/api/responses';
+import type { AnnotationsResponse, ErrorResponse } from '@/lib/models/types';
 
 export async function GET(
   request: NextRequest,
@@ -28,31 +20,19 @@ export async function GET(
     const session = getSession(id);
 
     if (!session) {
-      return NextResponse.json(
-        { error: 'Not Found', message: `Session with ID '${id}' not found` },
-        { status: 404 }
-      );
+      return notFoundResponse('Session', id);
     }
 
     // Check if this is a Claude Code session
     if (session.framework !== 'claudecode') {
-      return NextResponse.json(
-        {
-          error: 'Bad Request',
-          message: 'Annotation view is only available for Claude Code logs'
-        },
-        { status: 400 }
-      );
+      return badRequestResponse('Annotation view is only available for Claude Code logs');
     }
 
     // Get the annotation records
     const annotations = getAnnotationRecords(id);
 
     if (!annotations) {
-      return NextResponse.json(
-        { error: 'Not Found', message: 'Annotation records not found for this session' },
-        { status: 404 }
-      );
+      return notFoundResponse('Annotation records', id);
     }
 
     // Calculate counts
@@ -69,12 +49,6 @@ export async function GET(
     });
   } catch (e) {
     console.error('Annotations retrieval error:', e);
-    return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        message: e instanceof Error ? e.message : 'An unexpected error occurred',
-      },
-      { status: 500 }
-    );
+    return errorResponse(e);
   }
 }

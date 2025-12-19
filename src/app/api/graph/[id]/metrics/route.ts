@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getGraphBuilder } from '@/lib/services/session-manager';
+import { notFoundResponse, errorResponse } from '@/lib/api/responses';
 import type { MetricsResponse, ErrorResponse } from '@/lib/models/types';
 
 export async function GET(
@@ -19,10 +20,7 @@ export async function GET(
     const graphBuilder = getGraphBuilder(id);
 
     if (!graphBuilder) {
-      return NextResponse.json(
-        { error: 'Not Found', message: `Graph with ID '${id}' not found` },
-        { status: 404 }
-      );
+      return notFoundResponse('Graph', id);
     }
 
     // Get metrics
@@ -40,12 +38,6 @@ export async function GET(
     return NextResponse.json(response);
   } catch (e) {
     console.error('Metrics retrieval error:', e);
-    return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        message: e instanceof Error ? e.message : 'An unexpected error occurred',
-      },
-      { status: 500 }
-    );
+    return errorResponse(e);
   }
 }

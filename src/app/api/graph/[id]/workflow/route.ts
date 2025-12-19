@@ -10,11 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWorkflowGraph, getSession } from '@/lib/services/session-manager';
 import { WorkflowGraphBuilder } from '@/lib/services/workflow-graph-builder';
-import type { WorkflowGraphSnapshot, ErrorResponse } from '@/lib/models/types';
-
-interface WorkflowResponse {
-  workflow: WorkflowGraphSnapshot;
-}
+import { notFoundResponse, badRequestResponse, errorResponse } from '@/lib/api/responses';
+import type { WorkflowResponse, ErrorResponse } from '@/lib/models/types';
 
 export async function GET(
   request: NextRequest,
@@ -29,41 +26,26 @@ export async function GET(
     const session = getSession(id);
 
     if (!session) {
-      return NextResponse.json(
-        { error: 'Not Found', message: `Session with ID '${id}' not found` },
-        { status: 404 }
-      );
+      return notFoundResponse('Session', id);
     }
 
     // Check if this is a Claude Code session
     if (session.framework !== 'claudecode') {
-      return NextResponse.json(
-        {
-          error: 'Bad Request',
-          message: 'Workflow view is only available for Claude Code logs'
-        },
-        { status: 400 }
-      );
+      return badRequestResponse('Workflow view is only available for Claude Code logs');
     }
 
     // Get the workflow graph
     let workflow = getWorkflowGraph(id);
 
     if (!workflow) {
-      return NextResponse.json(
-        { error: 'Not Found', message: 'Workflow graph not found for this session' },
-        { status: 404 }
-      );
+      return notFoundResponse('Workflow graph', id);
     }
 
     // Parse step parameter and filter if needed
     if (stepParam !== null) {
       const step = parseInt(stepParam, 10);
       if (isNaN(step) || step < 0) {
-        return NextResponse.json(
-          { error: 'Bad Request', message: 'Invalid step parameter' },
-          { status: 400 }
-        );
+        return badRequestResponse('Invalid step parameter');
       }
 
       // Get filtered snapshot at specific step
@@ -74,12 +56,6 @@ export async function GET(
     return NextResponse.json({ workflow });
   } catch (e) {
     console.error('Workflow retrieval error:', e);
-    return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        message: e instanceof Error ? e.message : 'An unexpected error occurred',
-      },
-      { status: 500 }
-    );
+    return errorResponse(e);
   }
 }

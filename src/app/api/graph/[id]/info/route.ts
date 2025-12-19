@@ -6,8 +6,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionInfo } from '@/lib/services/session-manager';
-import type { ErrorResponse } from '@/lib/models/types';
+import { notFoundResponse, errorResponse } from '@/lib/api/responses';
 import type { SessionInfo } from '@/lib/services/session-manager';
+import type { ErrorResponse } from '@/lib/models/types';
 
 export async function GET(
   _request: NextRequest,
@@ -20,21 +21,12 @@ export async function GET(
     const info = getSessionInfo(id);
 
     if (!info) {
-      return NextResponse.json(
-        { error: 'Not Found', message: `Session with ID '${id}' not found` },
-        { status: 404 }
-      );
+      return notFoundResponse('Session', id);
     }
 
     return NextResponse.json(info);
   } catch (e) {
     console.error('Session info retrieval error:', e);
-    return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        message: e instanceof Error ? e.message : 'An unexpected error occurred',
-      },
-      { status: 500 }
-    );
+    return errorResponse(e);
   }
 }
