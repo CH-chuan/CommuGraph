@@ -436,9 +436,54 @@ Many user tool result records also include a convenience field `toolUseResult` w
 
 ---
 
+### `NotebookEdit`
+
+**Purpose**: Edit Jupyter notebook cells (.ipynb files).
+
+**Input schema**:
+```json
+{
+  "notebook_path": "string (required) - absolute path to notebook",
+  "new_source": "string (required) - new source for the cell",
+  "cell_id": "string (optional) - cell ID to edit or insert after",
+  "cell_type": "string (optional) - 'code' or 'markdown'",
+  "edit_mode": "string (optional) - 'replace' | 'insert' | 'delete'"
+}
+```
+
+**Note**: Used for editing Jupyter notebooks. Not commonly observed in typical logs.
+
+---
+
+### `WebSearch`
+
+**Purpose**: Search the web for up-to-date information.
+
+**Input schema**:
+```json
+{
+  "query": "string (required) - search query",
+  "allowed_domains": "array of strings (optional) - only include results from these domains",
+  "blocked_domains": "array of strings (optional) - never include results from these domains"
+}
+```
+
+**Result metadata** (`toolUseResult`):
+```json
+{
+  "query": "string",
+  "results": "array of search result objects",
+  "durationMs": "number"
+}
+```
+
+**Note**: Not observed in the sample logs but available in Claude Code.
+
+---
+
 ## Notes / caveats
 
 - This list is **empirical**: it reflects tools that appear in the provided sample logs, not necessarily every tool Claude Code can use.
 - In the logs, "tool calls" are always emitted by `type: "assistant"` records; "tool results" are recorded as `type: "user"` records referencing `tool_use_id`.
 - The `toolUseResult` field provides structured metadata about the tool execution, separate from the text `content` shown to the model.
-- Some tools like `WebSearch` exist in Claude Code but were not observed in these particular log samples.
+- Additional tools may exist in Claude Code that were not observed in these particular log samples.
