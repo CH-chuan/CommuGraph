@@ -1,97 +1,111 @@
 # CommuGraph
 
-CommuGraph is an analytics tool for **multi-agent chat logs**. It turns conversation traces (e.g. AutoGen, Claude Code) into interactive visualizations so you can review **agent-to-agent interactions**, **tool execution traces**, and **session-level metrics**.
+**Interactive visualizations for multi-agent chat logs**
 
-At the current stage, CommuGraph focuses on **log ingestion + visualization + navigation** (not full process mining yet).
+Turn AutoGen and Claude Code conversation traces into temporal graphs you can explore, replay, and analyze.
 
-## Getting Started
+## Views
 
-### Prerequisites
+### Graph View (AutoGen)
+![Graph View](public/images/graphView.png)
+*Agent network with temporal "ghost trail" edges — current interactions highlighted, history fades*
 
-- Node.js 18+
-- npm
+### Workflow View (Claude Code)
+![Workflow View](public/images/workflowView.png)
+*Tree layout showing tool calls, sub-agents, and execution flow*
 
-### Installation
+### Dialog View (Claude Code)
+![Dialog View](public/images/dialogview.png)
+*Sequential conversation flow for turn-by-turn analysis*
+
+## Quick Start
 
 ```bash
 git clone https://github.com/CH-chuan/CommuGraph.git
 cd CommuGraph
 npm install
-```
-
-### Development
-
-```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000)
 
-### Production Build
+## Supported Formats
 
-```bash
-npm run build
-npm start
-```
+| Framework | File Type | Notes |
+|-----------|-----------|-------|
+| AutoGen | `.jsonl` / `.json` | Single file with `sender`, `recipient`, `message`, `timestamp` |
+| Claude Code | `.jsonl` | v2.0.64+ logs, supports sub-agent files |
 
-## Supported Inputs
+## Features
 
-- **File types**: `.json` and `.jsonl`
-- **Frameworks**:
-  - AutoGen (single file)
-  - Claude Code (main session + optional sub-agent logs)
+- **Temporal playback** — Step through interactions with timeline controls
+- **Ghost trail edges** — Current/recent/history states with visual fade
+- **Cross-view highlighting** — Click chat message to highlight graph node
+- **Sub-agent exploration** — Expand nested agent sessions
+- **Session metrics** — Density, centrality, communication patterns
+
+---
+
+<details>
+<summary><strong>Schema Details</strong></summary>
 
 ### AutoGen Schema
 
-For AutoGen, CommuGraph supports a **JSON Lines** format where **each line is one message object**, shaped like the sample at `public/samples/autogen/mock_chat_history.jsonl`:
+JSONL format where each line is one message:
 
-- **Required fields**:
-  - `sender` (string): who sent the message (e.g. `"User"`, `"Manager"`, `"Coder"`)
-  - `recipient` (string): who the message is directed to
-  - `message` (string): message content (can include code blocks)
-  - `timestamp` (number): UNIX timestamp (seconds)
+```json
+{"sender": "User", "recipient": "Manager", "message": "...", "timestamp": 1234567890}
+```
 
-If your AutoGen export differs from this structure, it may not parse correctly yet.
+Required fields: `sender`, `recipient`, `message`, `timestamp`
 
 ### Claude Code Logs
 
-Our Claude Code parsing is tested against **chat logs from version `2.0.64`**. Key features:
+Tested against v2.0.64. Features:
+- Topological ordering via UUID parent-child chain
+- Phantom branch pruning (handles duplicate user messages)
+- Context compaction tracking
 
-- **Topological ordering** via UUID parent-child chain (not timestamp sorting)
-- **Phantom branch pruning** - Handles Claude Code's logging bug where user messages with images are logged multiple times
-- **Sub-agent support** - Upload sub-agent logs alongside the main session
-- **Context compaction** - Tracks conversation continuity across context boundaries
+</details>
 
-**Deduplication**: Claude Code sometimes logs the same user message multiple times (especially with images), creating duplicate branches. CommuGraph uses timestamp-based deduplication to remove these phantom branches automatically.
+<details>
+<summary><strong>API Reference</strong></summary>
 
-If you hit parsing/visualization issues with other versions, please **open an issue** with a minimal repro log.
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/upload` | POST | Upload log file |
+| `/api/frameworks` | GET | List supported parsers |
+| `/api/sessions` | GET | List all sessions |
+| `/api/graph/[id]` | GET | Get graph snapshot (`?step=N` for time slice) |
+| `/api/graph/[id]/metrics` | GET | Get graph metrics |
+| `/api/graph/[id]/info` | GET | Get session info |
+| `/api/graph/[id]/annotations` | GET | Get annotation records |
+| `/api/graph/[id]/workflow` | GET | Get workflow data |
+| `/api/session/[id]` | DELETE | Delete session |
 
-## View Modes
+</details>
 
-CommuGraph offers multiple ways to explore your chat logs:
+<details>
+<summary><strong>Architecture</strong></summary>
 
-| View | Description |
-|------|-------------|
-| **Workflow View** | Swim-lane diagram showing agent interactions over time |
-| **Annotation View** | Linear conversation with collapsible assistant turns |
-| **Chat Log** | Traditional message list with syntax highlighting |
-| **Graph View** | Interactive node-link diagram (AutoGen) |
+Unified **Next.js 15** monolith — all frontend and backend in TypeScript.
 
-## Current Capabilities
+```
+src/
+├── app/           # App Router + API Routes
+├── components/    # React components (graph, workflow, chat, ui)
+├── lib/           # Parsers, services, graph algorithms
+├── hooks/         # Data fetching, timeline playback
+├── context/       # Global UI state
+└── types/         # TypeScript definitions
+```
 
-- Upload and parse supported log formats
-- Multiple visualization modes (workflow, annotation, chat log, graph)
-- Timeline-based navigation and playback
-- Sub-agent exploration via modal views
-- Image display for user messages with screenshots
-- Session metrics dashboard
-- Cross-view highlighting and navigation
+**Core concept**: Time-aware edges store `Interaction` objects with timestamps and step indices, enabling temporal playback and pattern detection.
 
-## What's Next (Roadmap)
+</details>
 
-- Process mining functions (pending)
-
-## Tech Stack (for contributors)
+<details>
+<summary><strong>Tech Stack</strong></summary>
 
 | Component | Technology |
 |-----------|------------|
@@ -101,49 +115,15 @@ CommuGraph offers multiple ways to explore your chat logs:
 | State Management | TanStack Query + React Context |
 | Validation | Zod |
 | Styling | Tailwind CSS |
-| UI Components | shadcn/ui (Radix-based) |
-| Graph Algorithms | Custom DiGraph implementation |
+| UI Components | shadcn/ui |
 
-## API Endpoints
+</details>
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/upload` | POST | Upload JSONL/JSON file |
-| `/api/frameworks` | GET | List supported parsers |
-| `/api/sessions` | GET | List all sessions |
-| `/api/graph/[id]` | GET | Get graph snapshot (optional `?step=N`) |
-| `/api/graph/[id]/metrics` | GET | Get graph metrics |
-| `/api/graph/[id]/info` | GET | Get session info |
-| `/api/graph/[id]/annotations` | GET | Get annotation records for annotation view |
-| `/api/graph/[id]/workflow` | GET | Get workflow data for workflow view |
-| `/api/session/[id]` | DELETE | Delete session |
-
-## Architecture (high level)
-
-CommuGraph is a unified **Next.js 15 monolith** with all frontend and backend logic in TypeScript. The core innovation is **time-aware edges** - unlike traditional static graphs, edges store interaction objects with timestamps and step indices, enabling temporal playback and pattern detection.
-
-```
-src/
-├── app/           # Next.js App Router + API Routes
-├── components/    # React components (graph, chat, upload, ui)
-├── lib/           # Backend logic (parsers, services, graph algorithms)
-├── hooks/         # React hooks (data fetching, timeline playback)
-├── context/       # Global UI state
-├── types/         # TypeScript type definitions
-└── utils/         # Helpers and adapters
-```
-
-## Supported Frameworks
-
-- AutoGen (JSONL/JSON)
-- Claude Code (conversation logs)
-- More parsers can be added via the parser registry
-
-## Code Quality (for contributors)
+## Contributing
 
 ```bash
 npm run lint       # ESLint
-npm run build      # TypeScript type checking
+npm run build      # Type checking
 ```
 
 ## License
