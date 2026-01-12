@@ -1,8 +1,8 @@
 /**
- * Annotation Schema Types (v0.2)
+ * Dialog Schema Types (v0.2)
  *
  * TypeScript types matching annotation_schema_v02.yaml
- * Used by the annotation preprocessor to generate intermediate JSONL for labeling.
+ * Used by the dialog preprocessor to generate intermediate JSONL for labeling.
  */
 
 // ============================================================================
@@ -138,10 +138,10 @@ export interface TextOrArtifactRef {
 }
 
 // ============================================================================
-// Annotation Record (main output type)
+// Dialog Record (main output type)
 // ============================================================================
 
-export interface AnnotationRecord {
+export interface DialogRecord {
   /** Session identifier */
   session_id: string;
   /** Event identifier (formatted per convention) */
@@ -152,7 +152,7 @@ export interface AnnotationRecord {
   actor_type: ActorType;
   /** Agent kind - only for actor_type=agent */
   agent_kind?: AgentKind;
-  /** Type of annotation unit */
+  /** Type of dialog unit */
   unit_type: UnitType;
   /** Source traceability pointers */
   source: SourcePointers;

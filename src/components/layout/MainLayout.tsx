@@ -15,7 +15,7 @@ import { GraphViewWrapper } from '@/components/graph/GraphViewWrapper';
 import { TimelineControls } from '@/components/graph/TimelineControls';
 import { ChatLog } from '@/components/chat/ChatLog';
 import { WorkflowViewWrapper, WorkflowTimelineControls } from '@/components/workflow';
-import { AnnotationViewWrapper } from '@/components/annotation';
+import { DialogViewWrapper } from '@/components/dialog';
 import { AutoGenMetricsPanel } from '@/components/insights/AutoGenMetricsPanel';
 import { useAppContext } from '@/context/app-context';
 import { GitBranch, MessageSquare, GripVertical } from 'lucide-react';
@@ -40,10 +40,10 @@ function ViewModeTabs() {
   return (
     <div className="flex items-center gap-1 px-2 py-1 bg-slate-100 border-b border-slate-200">
       <button
-        onClick={() => setViewMode('annotation')}
+        onClick={() => setViewMode('dialog')}
         className={`
           flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors
-          ${viewMode === 'annotation'
+          ${viewMode === 'dialog'
             ? 'bg-white text-purple-600 shadow-sm'
             : 'text-slate-600 hover:bg-slate-200'
           }
@@ -93,8 +93,8 @@ export function MainLayout() {
           {/* Main View Area */}
           <div className="flex-1 overflow-hidden">
             {isClaudeCode ? (
-              viewMode === 'annotation' ? (
-                <AnnotationViewWrapper />
+              viewMode === 'dialog' ? (
+                <DialogViewWrapper />
               ) : (
                 <WorkflowViewWrapper />
               )

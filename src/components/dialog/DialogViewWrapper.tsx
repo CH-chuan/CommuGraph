@@ -1,28 +1,28 @@
 'use client';
 
 /**
- * AnnotationViewWrapper - Dynamic import wrapper for AnnotationView
+ * DialogViewWrapper - Dynamic import wrapper for DialogView
  *
  * React Flow requires browser APIs that aren't available during SSR.
  * This wrapper uses dynamic import with ssr: false.
  *
- * Handles cross-highlighting between annotation nodes and chat log.
+ * Handles cross-highlighting between dialog nodes and chat log.
  */
 
 import { useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { useAnnotationData } from '@/hooks/use-annotation-data';
+import { useDialogData } from '@/hooks/use-dialog-data';
 import { useAppContext } from '@/context/app-context';
 import { useWorkflowData } from '@/hooks/use-workflow-data';
 import { formatDuration } from '@/utils/format';
 import { CollapsibleSection } from '@/components/ui/CollapsibleSection';
 
-const AnnotationView = dynamic(
-  () => import('./AnnotationView').then((mod) => ({ default: mod.AnnotationView })),
-  { ssr: false, loading: () => <AnnotationLoadingState /> }
+const DialogView = dynamic(
+  () => import('./DialogView').then((mod) => ({ default: mod.DialogView })),
+  { ssr: false, loading: () => <DialogLoadingState /> }
 );
 
-function AnnotationLoadingState() {
+function DialogLoadingState() {
   return (
     <div className="flex h-full items-center justify-center bg-slate-50">
       <div className="text-center">
@@ -33,7 +33,7 @@ function AnnotationLoadingState() {
   );
 }
 
-export function AnnotationViewWrapper() {
+export function DialogViewWrapper() {
   const {
     graphId,
     highlightedStepIndex,
@@ -42,27 +42,27 @@ export function AnnotationViewWrapper() {
     setFocusStepIndex,
   } = useAppContext();
 
-  const { data, isLoading, isError, error } = useAnnotationData(graphId);
+  const { data, isLoading, isError, error } = useDialogData(graphId);
   const { data: workflowData } = useWorkflowData(graphId);
 
-  // Build mapping between annotation records and workflow step indices
-  // Maps each annotation to its closest workflow node(s) by timestamp
-  const { annotationToStepMap, stepToAnnotationMap } = useMemo(() => {
-    const aToS = new Map<number, number>(); // annotation index -> first matching stepIndex
-    const sToA = new Map<number, number>(); // stepIndex -> annotation index
+  // Build mapping between dialog records and workflow step indices
+  // Maps each dialog record to its closest workflow node(s) by timestamp
+  const { dialogToStepMap, stepToDialogMap } = useMemo(() => {
+    const dToS = new Map<number, number>(); // dialog index -> first matching stepIndex
+    const sToD = new Map<number, number>(); // stepIndex -> dialog index
 
-    if (!data?.annotations || !workflowData?.workflow) {
-      return { annotationToStepMap: aToS, stepToAnnotationMap: sToA };
+    if (!data?.records || !workflowData?.workflow) {
+      return { dialogToStepMap: dToS, stepToDialogMap: sToD };
     }
 
     const workflowNodes = workflowData.workflow.nodes
       .filter(n => !n.isSessionStart && n.laneId === 'main')
       .sort((a, b) => a.stepIndex - b.stepIndex);
 
-    const annotations = data.annotations;
+    const records = data.records;
 
-    // Sort annotations by timestamp
-    const sortedAnnotations = annotations
+    // Sort dialog records by timestamp
+    const sortedRecords = records
       .map((record, index) => ({
         record,
         index,
@@ -80,83 +80,83 @@ export function AnnotationViewWrapper() {
       .filter(n => n.time > 0)
       .sort((a, b) => a.time - b.time);
 
-    // For each annotation, find the closest workflow node
-    sortedAnnotations.forEach(({ index: annotationIndex, time: annotationTime }) => {
+    // For each dialog record, find the closest workflow node
+    sortedRecords.forEach(({ index: dialogIndex, time: dialogTime }) => {
       let closestStepIndex = -1;
       let closestDiff = Infinity;
 
       for (const { node, time: nodeTime } of sortedNodes) {
-        const diff = Math.abs(nodeTime - annotationTime);
+        const diff = Math.abs(nodeTime - dialogTime);
         if (diff < closestDiff) {
           closestDiff = diff;
           closestStepIndex = node.stepIndex;
         }
-        // Early exit if we've passed the annotation time and diff is increasing
-        if (nodeTime > annotationTime && diff > closestDiff) {
+        // Early exit if we've passed the dialog time and diff is increasing
+        if (nodeTime > dialogTime && diff > closestDiff) {
           break;
         }
       }
 
       if (closestStepIndex >= 0) {
-        aToS.set(annotationIndex, closestStepIndex);
+        dToS.set(dialogIndex, closestStepIndex);
       }
     });
 
-    // For each workflow node, find the closest annotation
+    // For each workflow node, find the closest dialog record
     sortedNodes.forEach(({ node, time: nodeTime }) => {
-      let closestAnnotationIndex = -1;
+      let closestDialogIndex = -1;
       let closestDiff = Infinity;
 
-      for (const { index, time: annotationTime } of sortedAnnotations) {
-        const diff = Math.abs(annotationTime - nodeTime);
+      for (const { index, time: dialogTime } of sortedRecords) {
+        const diff = Math.abs(dialogTime - nodeTime);
         if (diff < closestDiff) {
           closestDiff = diff;
-          closestAnnotationIndex = index;
+          closestDialogIndex = index;
         }
         // Early exit if we've passed the node time and diff is increasing
-        if (annotationTime > nodeTime && diff > closestDiff) {
+        if (dialogTime > nodeTime && diff > closestDiff) {
           break;
         }
       }
 
-      if (closestAnnotationIndex >= 0) {
-        sToA.set(node.stepIndex, closestAnnotationIndex);
+      if (closestDialogIndex >= 0) {
+        sToD.set(node.stepIndex, closestDialogIndex);
       }
     });
 
-    return { annotationToStepMap: aToS, stepToAnnotationMap: sToA };
+    return { dialogToStepMap: dToS, stepToDialogMap: sToD };
   }, [data, workflowData]);
 
-  // Compute conversation timing stats from annotations
+  // Compute conversation timing stats from dialog records
   const timingStats = useMemo(() => {
-    if (!data?.annotations) {
+    if (!data?.records) {
       return null;
     }
 
-    const annotations = data.annotations;
+    const records = data.records;
 
     // ===== User Prompt Intervals =====
     // Get user turns sorted by timestamp
-    const userTurns = annotations
+    const userTurns = records
       .map((record, index) => ({
         index,
         timestamp: record.timestamp ? new Date(record.timestamp).getTime() : 0,
       }))
       .filter((r) => {
-        const record = annotations[r.index];
+        const record = records[r.index];
         return record.unit_type === 'user_turn' && r.timestamp > 0;
       })
       .sort((a, b) => a.timestamp - b.timestamp);
 
     let userPromptStats = null;
     if (userTurns.length >= 2) {
-      const intervals: { ms: number; endAnnotationIndex: number }[] = [];
+      const intervals: { ms: number; endDialogIndex: number }[] = [];
       for (let i = 1; i < userTurns.length; i++) {
         const intervalMs = userTurns[i].timestamp - userTurns[i - 1].timestamp;
         if (intervalMs > 0) {
           intervals.push({
             ms: intervalMs,
-            endAnnotationIndex: userTurns[i].index,
+            endDialogIndex: userTurns[i].index,
           });
         }
       }
@@ -171,7 +171,7 @@ export function AnnotationViewWrapper() {
         userPromptStats = {
           min: min.ms,
           max: max.ms,
-          maxAnnotationIndex: max.endAnnotationIndex,
+          maxDialogIndex: max.endDialogIndex,
           avg,
           total,
           intervalCount: intervals.length,
@@ -181,7 +181,7 @@ export function AnnotationViewWrapper() {
 
     // ===== Agent Burst Duration =====
     // Group consecutive assistant turns and calculate duration of each group
-    const bursts: { ms: number; firstAnnotationIndex: number; lastAnnotationIndex: number }[] = [];
+    const bursts: { ms: number; firstDialogIndex: number; lastDialogIndex: number }[] = [];
     let burstIndices: number[] = [];
     let burstTimestamps: number[] = [];
 
@@ -194,8 +194,8 @@ export function AnnotationViewWrapper() {
         if (burstIndices.length > 1 || duration > 0) {
           bursts.push({
             ms: duration,
-            firstAnnotationIndex: burstIndices[0],
-            lastAnnotationIndex: burstIndices[burstIndices.length - 1],
+            firstDialogIndex: burstIndices[0],
+            lastDialogIndex: burstIndices[burstIndices.length - 1],
           });
         }
       }
@@ -203,9 +203,9 @@ export function AnnotationViewWrapper() {
       burstTimestamps = [];
     };
 
-    // Process annotations in order (they should already be in sequence order)
-    for (let index = 0; index < annotations.length; index++) {
-      const record = annotations[index];
+    // Process records in order (they should already be in sequence order)
+    for (let index = 0; index < records.length; index++) {
+      const record = records[index];
       const timestamp = record.timestamp ? new Date(record.timestamp).getTime() : 0;
 
       if (record.unit_type === 'assistant_turn' && timestamp > 0) {
@@ -232,7 +232,7 @@ export function AnnotationViewWrapper() {
       agentBurstStats = {
         min: min.ms,
         max: max.ms,
-        maxFirstAnnotationIndex: max.firstAnnotationIndex,
+        maxFirstDialogIndex: max.firstDialogIndex,
         avg,
         total,
         burstCount: bursts.length,
@@ -254,41 +254,41 @@ export function AnnotationViewWrapper() {
   const handleJumpToMaxUserPrompt = useCallback(() => {
     if (!timingStats?.userPrompt) return;
 
-    const stepIndex = annotationToStepMap.get(timingStats.userPrompt.maxAnnotationIndex);
+    const stepIndex = dialogToStepMap.get(timingStats.userPrompt.maxDialogIndex);
     if (stepIndex !== undefined) {
       setFocusStepIndex(stepIndex);
     }
-  }, [timingStats, annotationToStepMap, setFocusStepIndex]);
+  }, [timingStats, dialogToStepMap, setFocusStepIndex]);
 
   // Handle jump to max agent burst
   const handleJumpToMaxAgentBurst = useCallback(() => {
     if (!timingStats?.agentBurst) return;
 
-    const stepIndex = annotationToStepMap.get(timingStats.agentBurst.maxFirstAnnotationIndex);
+    const stepIndex = dialogToStepMap.get(timingStats.agentBurst.maxFirstDialogIndex);
     if (stepIndex !== undefined) {
       setFocusStepIndex(stepIndex);
     }
-  }, [timingStats, annotationToStepMap, setFocusStepIndex]);
+  }, [timingStats, dialogToStepMap, setFocusStepIndex]);
 
-  // Convert highlighted step index to annotation index
-  const highlightedAnnotationIndex = useMemo(() => {
+  // Convert highlighted step index to dialog index
+  const highlightedDialogIndex = useMemo(() => {
     if (highlightedStepIndex === null) return null;
-    return stepToAnnotationMap.get(highlightedStepIndex) ?? null;
-  }, [highlightedStepIndex, stepToAnnotationMap]);
+    return stepToDialogMap.get(highlightedStepIndex) ?? null;
+  }, [highlightedStepIndex, stepToDialogMap]);
 
-  // Convert focus step index to annotation index
-  const focusAnnotationIndex = useMemo(() => {
+  // Convert focus step index to dialog index
+  const focusDialogIndex = useMemo(() => {
     if (focusStepIndex === null) return null;
-    return stepToAnnotationMap.get(focusStepIndex) ?? null;
-  }, [focusStepIndex, stepToAnnotationMap]);
+    return stepToDialogMap.get(focusStepIndex) ?? null;
+  }, [focusStepIndex, stepToDialogMap]);
 
-  // Handle annotation node click - set highlighted step index for chat log
-  const handleNodeClick = useCallback((annotationIndex: number) => {
-    const stepIndex = annotationToStepMap.get(annotationIndex);
+  // Handle dialog node click - set highlighted step index for chat log
+  const handleNodeClick = useCallback((dialogIndex: number) => {
+    const stepIndex = dialogToStepMap.get(dialogIndex);
     if (stepIndex !== undefined) {
       setHighlightedStepIndex(stepIndex);
     }
-  }, [annotationToStepMap, setHighlightedStepIndex]);
+  }, [dialogToStepMap, setHighlightedStepIndex]);
 
   // Clear focus after it's been handled
   const handleFocusHandled = useCallback(() => {
@@ -311,7 +311,7 @@ export function AnnotationViewWrapper() {
   }
 
   if (isLoading) {
-    return <AnnotationLoadingState />;
+    return <DialogLoadingState />;
   }
 
   if (isError) {
@@ -329,7 +329,7 @@ export function AnnotationViewWrapper() {
     );
   }
 
-  if (!data?.annotations || data.annotations.length === 0) {
+  if (!data?.records || data.records.length === 0) {
     return (
       <div className="flex h-full items-center justify-center bg-slate-50">
         <div className="text-center">
@@ -346,12 +346,12 @@ export function AnnotationViewWrapper() {
 
   return (
     <div className="flex h-full">
-      {/* Main Annotation View */}
+      {/* Main Dialog View */}
       <div className="flex-1">
-        <AnnotationView
-          annotations={data.annotations}
-          highlightedIndex={highlightedAnnotationIndex}
-          focusIndex={focusAnnotationIndex}
+        <DialogView
+          records={data.records}
+          highlightedIndex={highlightedDialogIndex}
+          focusIndex={focusDialogIndex}
           onNodeClick={handleNodeClick}
           onFocusHandled={handleFocusHandled}
         />

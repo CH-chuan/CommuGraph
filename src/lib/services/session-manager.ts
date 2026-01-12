@@ -7,7 +7,7 @@
 
 import type { Message, WorkflowGraphSnapshot } from '@/lib/models/types';
 import type { GraphBuilder } from './graph-builder';
-import type { AnnotationRecord } from '@/lib/annotation/types';
+import type { DialogRecord } from '@/lib/dialog/types';
 
 export interface Session {
   id: string;
@@ -19,8 +19,8 @@ export interface Session {
   metadata: Record<string, unknown>;
   // Workflow graph for Claude Code logs
   workflowGraph?: WorkflowGraphSnapshot;
-  // Annotation records for Claude Code logs (preprocessed for labeling)
-  annotationRecords?: AnnotationRecord[];
+  // Dialog records for Claude Code logs (preprocessed for labeling)
+  dialogRecords?: DialogRecord[];
 }
 
 export interface SessionInfo {
@@ -58,7 +58,7 @@ function generateSessionId(): string {
  * @param framework - Framework name used for parsing
  * @param graphBuilder - GraphBuilder instance with built graph
  * @param workflowGraph - Optional workflow graph for Claude Code logs
- * @param annotationRecords - Optional annotation records for Claude Code logs
+ * @param dialogRecords - Optional dialog records for Claude Code logs
  * @returns Session ID
  */
 export function createSession(
@@ -66,7 +66,7 @@ export function createSession(
   framework: string,
   graphBuilder: GraphBuilder,
   workflowGraph?: WorkflowGraphSnapshot,
-  annotationRecords?: AnnotationRecord[]
+  dialogRecords?: DialogRecord[]
 ): string {
   // Generate unique session ID
   let sessionId = generateSessionId();
@@ -85,7 +85,7 @@ export function createSession(
     lastAccessed: now,
     metadata: {},
     workflowGraph,
-    annotationRecords,
+    dialogRecords,
   };
 
   sessions.set(sessionId, session);
@@ -138,14 +138,14 @@ export function getWorkflowGraph(sessionId: string): WorkflowGraphSnapshot | nul
 }
 
 /**
- * Get the annotation records for a session (Claude Code logs only).
+ * Get the dialog records for a session (Claude Code logs only).
  *
  * @param sessionId - Session ID
- * @returns AnnotationRecord array or null if not found/not Claude Code
+ * @returns DialogRecord array or null if not found/not Claude Code
  */
-export function getAnnotationRecords(sessionId: string): AnnotationRecord[] | null {
+export function getDialogRecords(sessionId: string): DialogRecord[] | null {
   const session = getSession(sessionId);
-  return session?.annotationRecords ?? null;
+  return session?.dialogRecords ?? null;
 }
 
 /**

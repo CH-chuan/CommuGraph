@@ -1,5 +1,5 @@
 /**
- * Annotation Preprocessor for Claude Code Logs (v0.2)
+ * Dialog Preprocessor for Claude Code Logs (v0.2)
  *
  * Transforms raw Claude Code JSONL into intermediate JSONL format
  * ready for annotation according to annotation_schema_v02.yaml.
@@ -17,7 +17,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {
-  type AnnotationRecord,
+  type DialogRecord,
   type RawLogRecord,
   type AssistantMessage,
   type UserMessage,
@@ -70,7 +70,7 @@ interface ParsedLine {
 // Preprocessor Class
 // ============================================================================
 
-export class AnnotationPreprocessor {
+export class DialogPreprocessor {
   private records: ParsedLine[] = [];
   private sessionId: string = '';
   private rawFile: string = '';
@@ -536,7 +536,7 @@ export class AnnotationPreprocessor {
   }
 
   /**
-   * Sort annotation records using Kahn's algorithm with timestamp-based priority.
+   * Sort dialog records using Kahn's algorithm with timestamp-based priority.
    *
    * This produces an ordering that:
    * 1. Respects tree structure (parents always before children)
@@ -551,12 +551,12 @@ export class AnnotationPreprocessor {
    * This is more robust than DFS because it doesn't process entire branches
    * before considering other branches - it interleaves based on timestamp.
    */
-  private topologicalSort(records: AnnotationRecord[]): AnnotationRecord[] {
+  private topologicalSort(records: DialogRecord[]): DialogRecord[] {
     if (records.length === 0) return [];
 
     // Build uuid -> record map
     // Register ALL raw_uuids since children may reference any of them
-    const byUuid = new Map<string, AnnotationRecord>();
+    const byUuid = new Map<string, DialogRecord>();
     for (const record of records) {
       for (const uuid of record.source.raw_uuids || []) {
         byUuid.set(uuid, record);
@@ -564,7 +564,7 @@ export class AnnotationPreprocessor {
     }
 
     // Build record -> parent record mapping
-    const parentOf = new Map<AnnotationRecord, AnnotationRecord | null>();
+    const parentOf = new Map<DialogRecord, DialogRecord | null>();
     for (const record of records) {
       const parentUuid = record.source.parent_uuid;
       if (parentUuid && byUuid.has(parentUuid)) {
@@ -575,15 +575,15 @@ export class AnnotationPreprocessor {
     }
 
     // Track which records have been processed
-    const processed = new Set<AnnotationRecord>();
-    const result: AnnotationRecord[] = [];
+    const processed = new Set<DialogRecord>();
+    const result: DialogRecord[] = [];
 
     // Helper to get timestamp for sorting
-    const getTimestamp = (r: AnnotationRecord): number =>
+    const getTimestamp = (r: DialogRecord): number =>
       r.timestamp ? new Date(r.timestamp).getTime() : 0;
 
     // Helper to check if a record is ready (parent processed or no parent)
-    const isReady = (r: AnnotationRecord): boolean => {
+    const isReady = (r: DialogRecord): boolean => {
       const parent = parentOf.get(r);
       return parent === null || parent === undefined || processed.has(parent);
     };
@@ -594,7 +594,7 @@ export class AnnotationPreprocessor {
     readyQueue.sort((a, b) => getTimestamp(a) - getTimestamp(b));
 
     // Build children map for efficient lookup
-    const childrenOf = new Map<AnnotationRecord, AnnotationRecord[]>();
+    const childrenOf = new Map<DialogRecord, DialogRecord[]>();
     for (const record of records) {
       const parent = parentOf.get(record);
       if (parent) {
@@ -615,7 +615,7 @@ export class AnnotationPreprocessor {
 
       // Check if any children are now ready
       const children = childrenOf.get(record) || [];
-      const newlyReady: AnnotationRecord[] = [];
+      const newlyReady: DialogRecord[] = [];
       for (const child of children) {
         if (!processed.has(child) && isReady(child)) {
           newlyReady.push(child);
@@ -642,14 +642,14 @@ export class AnnotationPreprocessor {
   }
 
   /**
-   * Generate annotation records from parsed data.
+   * Generate dialog records from parsed data.
    */
-  generateAnnotationRecords(): AnnotationRecord[] {
+  generateDialogRecords(): DialogRecord[] {
     const mainRecords = this.filterMainAgent();
     const turns = this.groupAssistantTurns(mainRecords);
     const toolResultsIndex = this.buildToolResultsIndex(mainRecords);
 
-    const output: AnnotationRecord[] = [];
+    const output: DialogRecord[] = [];
 
     // 1. Generate user_turn records
     for (const { lineNumber, record } of mainRecords) {
@@ -729,7 +729,7 @@ export class AnnotationPreprocessor {
         }));
       }
 
-      const record: AnnotationRecord = {
+      const dialogRecord: DialogRecord = {
         session_id: this.sessionId,
         event_id: makeAssistantEventId(turn.requestId, turn.messageId),
         actor_id: 'assistant',
@@ -743,10 +743,10 @@ export class AnnotationPreprocessor {
       };
 
       if (toolSummary) {
-        record.tool_summary = toolSummary;
+        dialogRecord.tool_summary = toolSummary;
       }
 
-      output.push(record);
+      output.push(dialogRecord);
     }
 
     // 3. Generate system_turn records for context compaction
@@ -837,9 +837,9 @@ export class AnnotationPreprocessor {
   }
 
   /**
-   * Write annotation records to JSONL file.
+   * Write dialog records to JSONL file.
    */
-  writeJsonl(records: AnnotationRecord[], outputPath: string): void {
+  writeJsonl(records: DialogRecord[], outputPath: string): void {
     const lines = records.map(r => JSON.stringify(r));
     fs.writeFileSync(outputPath, lines.join('\n') + '\n');
   }
@@ -853,26 +853,26 @@ if (require.main === module) {
   const args = process.argv.slice(2);
 
   if (args.length < 1) {
-    console.log('Usage: npx tsx src/lib/annotation/preprocessor.ts <input.jsonl> [output.jsonl]');
+    console.log('Usage: npx tsx src/lib/dialog/preprocessor.ts <input.jsonl> [output.jsonl]');
     console.log('');
-    console.log('Preprocesses Claude Code JSONL into annotation-ready format (v0.2 schema).');
+    console.log('Preprocesses Claude Code JSONL into dialog-ready format (v0.2 schema).');
     console.log('Focus: Main agent only (sidechains excluded).');
     process.exit(1);
   }
 
   const inputPath = args[0];
-  const outputPath = args[1] || inputPath.replace('.jsonl', '_annotation_prep.jsonl');
+  const outputPath = args[1] || inputPath.replace('.jsonl', '_dialog_prep.jsonl');
 
   console.log(`Input:  ${inputPath}`);
   console.log(`Output: ${outputPath}`);
   console.log('');
 
-  const preprocessor = new AnnotationPreprocessor();
+  const preprocessor = new DialogPreprocessor();
   preprocessor.parseFile(inputPath);
 
-  const records = preprocessor.generateAnnotationRecords();
+  const records = preprocessor.generateDialogRecords();
 
-  console.log(`Generated ${records.length} annotation records:`);
+  console.log(`Generated ${records.length} dialog records:`);
   const byType = {
     user_turn: records.filter(r => r.unit_type === 'user_turn').length,
     assistant_turn: records.filter(r => r.unit_type === 'assistant_turn').length,

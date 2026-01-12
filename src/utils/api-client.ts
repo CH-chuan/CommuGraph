@@ -8,7 +8,7 @@ import type {
   UploadResponse,
   GraphResponse,
   WorkflowResponse,
-  AnnotationsResponse,
+  DialogResponse,
   MetricsResponse,
   FrameworkListResponse,
 } from '@/types/api';
@@ -113,15 +113,15 @@ export async function getWorkflow(
 }
 
 /**
- * Get annotation records for a Claude Code session.
+ * Get dialog records for a Claude Code session.
  */
-export async function getAnnotations(
+export async function getDialog(
   graphId: string
-): Promise<AnnotationsResponse> {
-  return fetchJson<AnnotationsResponse>(
-    `/api/graph/${graphId}/annotations`,
+): Promise<DialogResponse> {
+  return fetchJson<DialogResponse>(
+    `/api/graph/${graphId}/dialog`,
     undefined,
-    'Failed to fetch annotations'
+    'Failed to fetch dialog'
   );
 }
 

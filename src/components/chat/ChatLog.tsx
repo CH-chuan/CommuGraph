@@ -12,7 +12,7 @@ import { useMemo, useRef, useEffect, useState } from 'react';
 import { useAppContext } from '@/context/app-context';
 import { useGraphData } from '@/hooks/use-graph-data';
 import { useWorkflowData } from '@/hooks/use-workflow-data';
-import { useAnnotationData } from '@/hooks/use-annotation-data';
+import { useDialogData } from '@/hooks/use-dialog-data';
 import { getAgentColor } from '@/utils/graph-adapters';
 import { formatSubAgentName, extractAgentIdFromLaneId } from '@/utils/agent-naming';
 import { getToolColors } from '@/utils/tool-colors';
@@ -104,7 +104,7 @@ export function ChatLog() {
   } = useAppContext();
 
   const isClaudeCode = framework === 'claudecode';
-  const isAnnotationView = isClaudeCode && viewMode === 'annotation';
+  const isDialogView = isClaudeCode && viewMode === 'dialog';
 
   // Use different data sources based on framework
   const { data: graphData, isLoading: graphLoading } = useGraphData(
@@ -114,9 +114,9 @@ export function ChatLog() {
   const { data: workflowData, isLoading: workflowLoading } = useWorkflowData(
     isClaudeCode ? graphId : null // Only fetch for Claude Code
   );
-  // Fetch annotation data for annotation view to sync step numbers
-  const { data: annotationData } = useAnnotationData(
-    isAnnotationView ? graphId : null
+  // Fetch dialog data for dialog view to sync step numbers
+  const { data: dialogData } = useDialogData(
+    isDialogView ? graphId : null
   );
 
   const isLoading = isClaudeCode ? workflowLoading : graphLoading;
@@ -136,7 +136,7 @@ export function ChatLog() {
   const stepToAnnotationIndexMap = useMemo(() => {
     const map = new Map<number, number>();
 
-    if (!isAnnotationView || !annotationData?.annotations || !workflowData?.workflow) {
+    if (!isDialogView || !dialogData?.records || !workflowData?.workflow) {
       return map;
     }
 
@@ -144,7 +144,7 @@ export function ChatLog() {
       .filter(n => !n.isSessionStart && n.laneId === 'main')
       .sort((a, b) => a.stepIndex - b.stepIndex);
 
-    const annotations = annotationData.annotations;
+    const annotations = dialogData.records;
 
     // Sort workflow nodes by timestamp
     const sortedNodes = workflowNodes
@@ -188,7 +188,7 @@ export function ChatLog() {
     });
 
     return map;
-  }, [isAnnotationView, annotationData, workflowData]);
+  }, [isDialogView, dialogData, workflowData]);
 
   // Extract messages based on framework
   const { messages, agentColors, mainStepIndices } = useMemo(() => {
@@ -247,7 +247,7 @@ export function ChatLog() {
         if (node.isSessionStart) return '';
 
         // In annotation view, use annotation index for main agent messages
-        if (isAnnotationView && node.laneId === 'main') {
+        if (isDialogView && node.laneId === 'main') {
           const annotationSeq = stepToAnnotationIndexMap.get(node.stepIndex);
           if (annotationSeq !== undefined) {
             return `#${annotationSeq}`;
@@ -352,7 +352,7 @@ export function ChatLog() {
     allMessages.sort((a, b) => a.stepIndex - b.stepIndex);
 
     return { messages: allMessages, agentColors: colors, mainStepIndices: [] };
-  }, [isClaudeCode, workflowData, graphData, showSubAgentMessages, isAnnotationView, stepToAnnotationIndexMap]);
+  }, [isClaudeCode, workflowData, graphData, showSubAgentMessages, isDialogView, stepToAnnotationIndexMap]);
 
   // For Claude Code, compute effectiveStepIndex from currentStep (main agent step number)
   const effectiveStepIndex = useMemo(() => {
@@ -433,8 +433,8 @@ export function ChatLog() {
           <div>
             <h3 className="font-semibold text-lg">Chat Log</h3>
             <p className="text-xs text-slate-500">
-              {isAnnotationView && annotationData?.total
-                ? `${annotationData.total} records`
+              {isDialogView && dialogData?.total
+                ? `${dialogData.total} records`
                 : `${messages.length} messages`}
             </p>
           </div>
@@ -473,7 +473,7 @@ export function ChatLog() {
               const isCurrent = msg.stepIndex === effectiveStepIndex;
               const isHighlighted = msg.stepIndex === highlightedStepIndex;
               // In annotation view, show all messages without opacity filtering
-              const isPast = isAnnotationView ? true : msg.stepIndex <= effectiveStepIndex;
+              const isPast = isDialogView ? true : msg.stepIndex <= effectiveStepIndex;
 
               // Get nodeType colors for Claude Code messages
               // Use sky colors for user_input with images

@@ -74,9 +74,9 @@ export function PreFlightModal({ open, onClose }: PreFlightModalProps) {
           setTotalSteps(data.total_steps);
           setMainAgentStepCount(data.main_agent_steps);
           setAppFramework(data.framework);
-          // Set annotation view as default for Claude Code
+          // Set dialog view as default for Claude Code
           if (data.framework === 'claudecode') {
-            setViewMode('annotation');
+            setViewMode('dialog');
           }
           setFiles([]);
           setSubAgentDir('');
@@ -131,9 +131,9 @@ export function PreFlightModal({ open, onClose }: PreFlightModalProps) {
             setTotalSteps(data.total_steps);
             setMainAgentStepCount(data.main_agent_steps);
             setAppFramework(data.framework);
-            // Set annotation view as default for Claude Code
+            // Set dialog view as default for Claude Code
             if (data.framework === 'claudecode') {
-              setViewMode('annotation');
+              setViewMode('dialog');
             }
             onClose();
           },

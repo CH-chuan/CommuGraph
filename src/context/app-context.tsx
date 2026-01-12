@@ -9,7 +9,7 @@
 
 import { createContext, useContext, useState, type ReactNode } from 'react';
 
-export type ViewMode = 'workflow' | 'annotation';
+export type ViewMode = 'workflow' | 'dialog';
 
 interface AppContextType {
   graphId: string | null;

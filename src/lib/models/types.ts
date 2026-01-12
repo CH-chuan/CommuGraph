@@ -42,6 +42,31 @@ export const AnomalyType = {
 export type AnomalyType = (typeof AnomalyType)[keyof typeof AnomalyType];
 
 // ============================================================================
+// Speech Act Types (Searle's Five Illocutionary Types)
+// ============================================================================
+
+export const SpeechActType = {
+  REPRESENTATIVE: 'REPRESENTATIVE',
+  DIRECTIVE: 'DIRECTIVE',
+  COMMISSIVE: 'COMMISSIVE',
+  EXPRESSIVE: 'EXPRESSIVE',
+  DECLARATION: 'DECLARATION',
+} as const;
+
+export type SpeechActType = (typeof SpeechActType)[keyof typeof SpeechActType];
+
+export interface SpeechActLabel {
+  primary_type: SpeechActType;
+  secondary_type?: SpeechActType | null;
+  confidence?: number;
+  notes?: string;
+}
+
+export interface LabeledMessage extends Message {
+  speech_act: SpeechActLabel;
+}
+
+// ============================================================================
 // Zod Schemas
 // ============================================================================
 
@@ -145,8 +170,8 @@ export interface UploadResponse {
   sub_agents_loaded?: number;
   /** Agent IDs for which no file was found (for Claude Code) */
   sub_agents_missing?: string[];
-  /** Number of annotation records generated (for Claude Code) */
-  annotation_count?: number;
+  /** Number of dialog records generated (for Claude Code) */
+  dialog_count?: number;
 }
 
 export interface GraphResponse {
@@ -186,8 +211,8 @@ export interface WorkflowResponse {
   workflow: WorkflowGraphSnapshot;
 }
 
-export interface AnnotationsResponse {
-  annotations: import('@/lib/annotation/types').AnnotationRecord[];
+export interface DialogResponse {
+  records: import('@/lib/dialog/types').DialogRecord[];
   total: number;
   user_turn_count: number;
   assistant_turn_count: number;
