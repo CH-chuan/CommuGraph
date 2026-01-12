@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * AnnotationNode - Node components for annotation visualization
+ * DialogNode - Node components for dialog visualization
  *
- * Two node types based on annotation unit_type:
+ * Two node types based on dialog unit_type:
  * - user_turn: Blue theme, user icon, shows prompt text
  * - assistant_turn: Purple theme, shows thinking/text/tool_calls
  *
@@ -23,11 +23,11 @@ import {
   Settings,
   Image as ImageIcon,
 } from 'lucide-react';
-import type { AnnotationRecord, LabelRecord } from '@/lib/annotation/types';
+import type { DialogRecord, LabelRecord } from '@/lib/dialog/types';
 
 // Node data interface for React Flow
-export interface AnnotationNodeData {
-  record: AnnotationRecord;
+export interface DialogNodeData {
+  record: DialogRecord;
   sequenceIndex: number;
   isHighlighted?: boolean;
   // Callback for opening full-size image
@@ -62,7 +62,7 @@ function truncateText(text: string, maxLength: number): string {
 /**
  * User Turn Node Component
  */
-function UserTurnNode({ data, selected }: { data: AnnotationNodeData; selected?: boolean }) {
+function UserTurnNode({ data, selected }: { data: DialogNodeData; selected?: boolean }) {
   const { record, sequenceIndex, isHighlighted, onImageClick } = data;
   const text = record.text_or_artifact_ref?.text || '';
   const images = record.text_or_artifact_ref?.images;
@@ -157,7 +157,7 @@ function formatSystemSubtype(subtype?: string): string {
 /**
  * System Turn Node Component (for context compaction and other system messages)
  */
-function SystemTurnNode({ data, selected }: { data: AnnotationNodeData; selected?: boolean }) {
+function SystemTurnNode({ data, selected }: { data: DialogNodeData; selected?: boolean }) {
   const { record, sequenceIndex, isHighlighted } = data;
   const text = record.text_or_artifact_ref?.text || 'System event';
   const compactMetadata = record.compact_metadata;
@@ -253,7 +253,7 @@ function SystemTurnNode({ data, selected }: { data: AnnotationNodeData; selected
 /**
  * Assistant Turn Node Component
  */
-function AssistantTurnNode({ data, selected }: { data: AnnotationNodeData; selected?: boolean }) {
+function AssistantTurnNode({ data, selected }: { data: DialogNodeData; selected?: boolean }) {
   const { record, sequenceIndex, isHighlighted } = data;
   const { text_or_artifact_ref, tool_summary } = record;
 
@@ -458,7 +458,7 @@ function AssistantTurnNode({ data, selected }: { data: AnnotationNodeData; selec
 }
 
 /**
- * Label Slot Component - Shows annotation labels
+ * Label Slot Component - Shows dialog labels
  */
 function LabelSlot({ labels }: { labels: LabelRecord[] }) {
   if (!labels || labels.length === 0) {
@@ -493,10 +493,10 @@ function LabelSlot({ labels }: { labels: LabelRecord[] }) {
 }
 
 /**
- * Main Annotation Node Component - Routes to correct sub-component
+ * Main Dialog Node Component - Routes to correct sub-component
  */
-function AnnotationNodeComponent({ data, selected }: NodeProps) {
-  const nodeData = data as unknown as AnnotationNodeData;
+function DialogNodeComponent({ data, selected }: NodeProps) {
+  const nodeData = data as unknown as DialogNodeData;
   const { record } = nodeData;
 
   if (record.unit_type === 'user_turn') {
@@ -510,9 +510,9 @@ function AnnotationNodeComponent({ data, selected }: NodeProps) {
   return <AssistantTurnNode data={nodeData} selected={selected} />;
 }
 
-export const AnnotationNode = memo(AnnotationNodeComponent);
+export const DialogNode = memo(DialogNodeComponent);
 
 // Export node types for React Flow
-export const annotationNodeTypes = {
-  annotation: AnnotationNode,
+export const dialogNodeTypes = {
+  dialog: DialogNode,
 };

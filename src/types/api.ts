@@ -9,7 +9,7 @@ export type {
   UploadResponse,
   GraphResponse,
   WorkflowResponse,
-  AnnotationsResponse,
+  DialogResponse,
   MetricsResponse,
   FrameworkListResponse,
   ErrorResponse,

@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * AnnotationView - Main annotation visualization component
+ * DialogView - Main dialog visualization component
  *
- * Vertical sequence view for Claude Code annotation records
+ * Vertical sequence view for Claude Code dialog records
  * Features:
  * - Linear vertical layout (conversation flow)
  * - User turns (blue) and assistant turns (purple)
@@ -28,8 +28,8 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { annotationNodeTypes, type AnnotationNodeData } from './AnnotationNode';
-import type { AnnotationRecord } from '@/lib/annotation/types';
+import { dialogNodeTypes, type DialogNodeData } from './DialogNode';
+import type { DialogRecord } from '@/lib/dialog/types';
 
 // Layout configuration
 const LAYOUT_CONFIG = {
@@ -40,8 +40,8 @@ const LAYOUT_CONFIG = {
   startX: 600,            // Base X position (allows horizontal expansion to both sides)
 };
 
-interface AnnotationViewProps {
-  annotations: AnnotationRecord[];
+interface DialogViewProps {
+  records: DialogRecord[];
   highlightedIndex?: number | null;
   focusIndex?: number | null;
   onNodeClick?: (index: number) => void;
@@ -49,17 +49,17 @@ interface AnnotationViewProps {
 }
 
 /**
- * Row type for grouping annotations
+ * Row type for grouping dialog records
  * - User turns are always in their own row
  * - Consecutive assistant turns are grouped in a horizontal row
  */
 interface LayoutRow {
-  records: AnnotationRecord[];
+  records: DialogRecord[];
   indices: number[];
 }
 
 /**
- * Convert annotation records to React Flow nodes and edges
+ * Convert dialog records to React Flow nodes and edges
  *
  * Layout algorithm:
  * - User turns: single node, centered
@@ -68,18 +68,18 @@ interface LayoutRow {
  * - Horizontal edges connect consecutive assistant turns within a row
  */
 function convertToReactFlow(
-  annotations: AnnotationRecord[],
+  records: DialogRecord[],
   highlightedIndex: number | null,
   onImageClick: (image: { mediaType: string; data: string }) => void
 ): { nodes: Node[]; edges: Edge[]; totalHeight: number } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  // Group annotations into rows
+  // Group records into rows
   const rows: LayoutRow[] = [];
   let assistantRow: LayoutRow = { records: [], indices: [] };
 
-  annotations.forEach((record, index) => {
+  records.forEach((record, index) => {
     if (record.unit_type === 'user_turn' || record.unit_type === 'system_turn') {
       // User turn and system turn always start a new row (by themselves)
       // First, push any pending assistant row
@@ -115,7 +115,7 @@ function convertToReactFlow(
       const globalIndex = row.indices[nodeIndexInRow];
       const x = rowStartX + nodeIndexInRow * (LAYOUT_CONFIG.nodeWidth + LAYOUT_CONFIG.horizontalSpacing);
 
-      const nodeData: AnnotationNodeData = {
+      const nodeData: DialogNodeData = {
         record,
         sequenceIndex: globalIndex + 1,
         isHighlighted: highlightedIndex === globalIndex,
@@ -124,7 +124,7 @@ function convertToReactFlow(
 
       nodes.push({
         id: record.event_id,
-        type: 'annotation',
+        type: 'dialog',
         position: { x, y: currentY },
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
@@ -187,7 +187,7 @@ function convertToReactFlow(
 /**
  * Estimate node height based on content for layout
  */
-function estimateNodeHeight(record: AnnotationRecord): number {
+function estimateNodeHeight(record: DialogRecord): number {
   let height = 100; // Base height (header + label slot)
 
   const ref = record.text_or_artifact_ref;
@@ -382,9 +382,9 @@ function VerticalScrollbar({ totalHeight, containerRef }: ScrollbarProps) {
 }
 
 /**
- * Inner AnnotationView with ReactFlow hooks access
+ * Inner DialogView with ReactFlow hooks access
  */
-interface InnerAnnotationViewProps {
+interface InnerDialogViewProps {
   nodes: Node[];
   edges: Edge[];
   totalHeight: number;
@@ -394,7 +394,7 @@ interface InnerAnnotationViewProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
-function InnerAnnotationView({
+function InnerDialogView({
   nodes,
   edges,
   totalHeight,
@@ -402,7 +402,7 @@ function InnerAnnotationView({
   onNodeClick,
   onFocusHandled,
   containerRef,
-}: InnerAnnotationViewProps) {
+}: InnerDialogViewProps) {
   const { setCenter, getNodes } = useReactFlow();
 
   // Handle focus on node when focusIndex changes (from chat log double-click)
@@ -411,7 +411,7 @@ function InnerAnnotationView({
 
     // Find the node with this index (sequenceIndex is 1-based)
     const targetNode = getNodes().find(
-      (n) => (n.data as unknown as AnnotationNodeData).sequenceIndex === focusIndex + 1
+      (n) => (n.data as unknown as DialogNodeData).sequenceIndex === focusIndex + 1
     );
 
     if (targetNode) {
@@ -435,7 +435,7 @@ function InnerAnnotationView({
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       if (onNodeClick) {
-        const nodeData = node.data as unknown as AnnotationNodeData;
+        const nodeData = node.data as unknown as DialogNodeData;
         const index = nodeData.sequenceIndex - 1;
         onNodeClick(index);
       }
@@ -448,7 +448,7 @@ function InnerAnnotationView({
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        nodeTypes={annotationNodeTypes}
+        nodeTypes={dialogNodeTypes}
         onNodeClick={handleNodeClick}
         fitView
         fitViewOptions={{ padding: 0.2, minZoom: 0.05 }}
@@ -462,7 +462,7 @@ function InnerAnnotationView({
         <MiniMap
           position="bottom-left"
           nodeColor={(node) => {
-            const data = node.data as unknown as AnnotationNodeData;
+            const data = node.data as unknown as DialogNodeData;
             if (data.record.unit_type === 'user_turn') return '#3B82F6'; // Blue
             if (data.record.unit_type === 'system_turn') return '#94A3B8'; // Slate/Grey
             return '#8B5CF6'; // Purple (assistant)
@@ -476,15 +476,15 @@ function InnerAnnotationView({
 }
 
 /**
- * AnnotationView Component
+ * DialogView Component
  */
-export function AnnotationView({
-  annotations,
+export function DialogView({
+  records,
   highlightedIndex = null,
   focusIndex = null,
   onNodeClick,
   onFocusHandled,
-}: AnnotationViewProps) {
+}: DialogViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [modalImage, setModalImage] = useState<{ mediaType: string; data: string } | null>(null);
 
@@ -495,11 +495,11 @@ export function AnnotationView({
 
   // Convert data to React Flow format
   const { nodes, edges, totalHeight } = useMemo(
-    () => convertToReactFlow(annotations, highlightedIndex, handleImageClick),
-    [annotations, highlightedIndex, handleImageClick]
+    () => convertToReactFlow(records, highlightedIndex, handleImageClick),
+    [records, highlightedIndex, handleImageClick]
   );
 
-  if (annotations.length === 0) {
+  if (records.length === 0) {
     return (
       <div className="flex h-full items-center justify-center bg-slate-50">
         <div className="text-center">
@@ -517,7 +517,7 @@ export function AnnotationView({
   return (
     <div ref={containerRef} className="relative h-full w-full">
       <ReactFlowProvider>
-        <InnerAnnotationView
+        <InnerDialogView
           nodes={nodes}
           edges={edges}
           totalHeight={totalHeight}

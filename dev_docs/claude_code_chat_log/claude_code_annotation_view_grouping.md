@@ -4,30 +4,22 @@ This document explains how CommuGraph groups raw JSONL records from Claude Code 
 
 ---
 
-## Naming Convention: UI vs Code
+## Naming Convention
 
-> **Important**: The UI displays "Dialog View" but internal code still uses "Annotation" naming.
+> **Note**: As of January 2026, UI and internal code naming are now aligned. Both use "Dialog" terminology.
 
-| Layer | Current Name | Notes |
-|-------|--------------|-------|
+| Layer | Name | Location |
+|-------|------|----------|
 | **UI Labels** | Dialog View, Dialog Stats | User-facing text |
 | **Tab Icon** | `MessageSquare` | Chat bubble icon |
-| **ViewMode Type** | `'annotation'` | `src/context/app-context.tsx` |
-| **Components** | `AnnotationView`, `AnnotationNode`, `AnnotationViewWrapper` | `src/components/annotation/` |
-| **Types** | `AnnotationRecord`, `AnnotationNodeData` | `src/lib/annotation/types.ts` |
-| **Preprocessor** | `AnnotationPreprocessor` | `src/lib/annotation/preprocessor.ts` |
-| **API Endpoint** | `/api/graph/[id]/annotations` | Returns dialog records |
-| **Hook** | `useAnnotationData` | `src/hooks/use-annotation-data.ts` |
+| **ViewMode Type** | `'dialog'` | `src/context/app-context.tsx` |
+| **Components** | `DialogView`, `DialogNode`, `DialogViewWrapper` | `src/components/dialog/` |
+| **Types** | `DialogRecord`, `DialogNodeData` | `src/lib/dialog/types.ts` |
+| **Preprocessor** | `DialogPreprocessor` | `src/lib/dialog/preprocessor.ts` |
+| **API Endpoint** | `/api/graph/[id]/dialog` | Returns dialog records |
+| **Hook** | `useDialogData` | `src/hooks/use-dialog-data.ts` |
 
-### Future Full Rename (Not Yet Done)
-
-If a complete rename is desired, these items need updating:
-- `src/components/annotation/` → `src/components/dialog/`
-- `src/lib/annotation/` → `src/lib/dialog/`
-- All `Annotation*` types → `Dialog*`
-- API endpoint `/annotations` → `/dialog`
-- ViewMode type `'annotation'` → `'dialog'`
-- Hook `useAnnotationData` → `useDialogData`
+See **[migration_annotation_to_dialog.md](./migration_annotation_to_dialog.md)** for the full migration history.
 
 ---
 
@@ -43,19 +35,19 @@ Raw JSONL Lines (1 line = 1 event)
 ClaudeCodeParser.parseClaudeCodeLog()
     └─ ClaudeCodeMessage[]
         ↓
-AnnotationPreprocessor.generateAnnotationRecords()
+DialogPreprocessor.generateDialogRecords()
     ├─ groupAssistantTurns() → assistant_turn units
     ├─ extractUserTurns() → user_turn units
     ├─ extractSystemTurns() → system_turn units
     └─ linkToolResults() → populate tool_summary
         ↓
-AnnotationRecord[] (API response)
+DialogRecord[] (API response)
 ```
 
 ## API Endpoint
 
 ```
-GET /api/graph/[id]/annotations
+GET /api/graph/[id]/dialog
 ```
 
 ---
@@ -64,7 +56,7 @@ GET /api/graph/[id]/annotations
 
 ### 1. assistant_turn
 
-Groups all content from one LLM response into a single annotation unit.
+Groups all content from one LLM response into a single dialog unit.
 
 **Grouping Key**: `(requestId, messageId)`
 
@@ -133,7 +125,7 @@ interface SystemTurn {
 
 ## Tool Result Linking
 
-**Location**: `src/lib/annotation/preprocessor.ts`
+**Location**: `src/lib/dialog/preprocessor.ts`
 
 Tool results are linked back to their originating tool calls:
 
@@ -218,7 +210,7 @@ Sub-agent activity is visible through:
                     Group by (requestId, messageId)
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                    DIALOG UNITS                             │
+│                    DIALOG UNITS                                 │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
@@ -287,7 +279,7 @@ See **[record_ordering.md](./record_ordering.md)** for the full algorithm coveri
 
 | File | Role |
 |------|------|
-| `src/lib/annotation/preprocessor.ts` | Turn grouping, tool linking, unit generation, **topological sort** |
-| `src/lib/annotation/types.ts` | AnnotationRecord, AssistantTurn, UserTurn types |
+| `src/lib/dialog/preprocessor.ts` | Turn grouping, tool linking, unit generation, **topological sort** |
+| `src/lib/dialog/types.ts` | DialogRecord, AssistantTurn, UserTurn types |
 | `src/lib/parsers/claude-code-parser.ts` | Initial parsing (provides ClaudeCodeMessage[]) |
-| `src/app/api/graph/[id]/annotations/route.ts` | API endpoint returning AnnotationRecord[] |
+| `src/app/api/graph/[id]/dialog/route.ts` | API endpoint returning DialogRecord[] |
